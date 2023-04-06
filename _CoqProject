@@ -1,0 +1,39 @@
+-Q . GeneralTT
+
+-arg -noinit
+-arg -indices-matter
+
+
+GeneralTT/Auxiliary/General.v
+GeneralTT/Auxiliary/WellFounded.v
+GeneralTT/Auxiliary/Family.v
+GeneralTT/Auxiliary/Coproduct.v
+GeneralTT/Auxiliary/Closure.v
+GeneralTT/Syntax/ScopeSystem.v
+GeneralTT/Syntax/SyntacticClass.v
+GeneralTT/Syntax/Arity.v
+GeneralTT/Syntax/Signature.v
+GeneralTT/Syntax/Expression.v
+GeneralTT/Syntax/Substitution.v
+GeneralTT/Syntax/Metavariable.v
+GeneralTT/Syntax/All.v
+GeneralTT/Typing/Context.v
+GeneralTT/Typing/Judgement.v
+GeneralTT/Typing/Presuppositions.v
+GeneralTT/Typing/RawRule.v
+GeneralTT/Typing/StructuralRule.v
+GeneralTT/Typing/RawTypeTheory.v
+GeneralTT/Typing/StructuralRulePresuppositions.v
+GeneralTT/Typing/All.v
+GeneralTT/Presented/ContextVariants.v
+GeneralTT/Presented/AlgebraicExtension.v
+GeneralTT/Presented/PresentedRawRule.v
+GeneralTT/Presented/CongruenceRule.v
+GeneralTT/Presented/PresentedRawTypeTheory.v
+GeneralTT/Presented/TypedRule.v
+GeneralTT/Presented/TypeTheory.v
+GeneralTT/Metatheorem/UniqueTyping.v
+GeneralTT/Metatheorem/Elimination.v
+GeneralTT/Metatheorem/Presuppositions.v
+GeneralTT/Metatheorem/Acceptability.v
+GeneralTT/Example/ScopeSystemExamples.v
