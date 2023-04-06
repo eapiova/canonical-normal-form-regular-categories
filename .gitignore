@@ -10,3 +10,4 @@ Makefile.coq
 Makefile.coq.conf
 html
 .Makefile.coq.d
+raw.v
