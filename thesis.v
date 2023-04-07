@@ -1403,7 +1403,7 @@ Proof.
   - refine (class_type, 1%nat).
   - refine (class_type, 0%nat).
   - refine (class_term, 0%nat).
-  - refine (class_term, 2%nat).
+  - refine (class_term, 1%nat).
 Defined.
 
 Let L : family_index metas.
