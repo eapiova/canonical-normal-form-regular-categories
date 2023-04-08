@@ -506,6 +506,16 @@ Proof.
   refine m_E_Sigma_symbol.
 Defined.
 
+
+Definition app_terms {gamma : scope_carrier DeBruijn} (m : raw_term Sig (scope_sum gamma 2%nat)) (b c : raw_term Sig (scope_sum gamma 0%nat)) : raw_term Sig gamma.
+Proof.
+  refine (instantiate_expression (_ _) (raw_symbol (include_metavariable m_E_Sigma) _)).
+  intros.
+  destruct i.
+  - refine d.
+  - refine m.
+Defined.
+
 Definition E_Sigma : raw_rule Sig.
 Proof.
   refine {| raw_rule_metas := metas_E_Sigma; raw_rule_premise := _; raw_rule_conclusion := _ |}.
@@ -1458,14 +1468,278 @@ Proof.
         refine (raw_variable _).
         apply zero_db.
       * refine (raw_symbol (include_metavariable l) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_variable _).
+        apply zero_db.
+  - simple refine {| context_of_judgement := [: _; _ :]; hypothetical_part := _ |}.
+    + refine (raw_symbol (include_metavariable A) (empty_rect _ scope_is_empty _)).
+    + refine (raw_symbol (include_metavariable A) (empty_rect _ scope_is_empty _)).
+    + refine {| form_of_judgement := form_equality class_term; judgement_expression := _ |}.
+      unfold hypothetical_judgement_expressions.
+      intros. recursive_destruct i.
+      * refine (raw_symbol (include_metavariable L) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_symbol (include_symbol class) _).
+        intros. recursive_destruct i.
+        refine (raw_variable _).
+        apply zero_db.
+      * refine (raw_symbol (include_metavariable l) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_variable _).
+        apply zero_db.
+      * refine (raw_symbol (include_metavariable l) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_variable _).
+        apply (succ_db zero_db).
+  - refine {| context_of_judgement := [: :]; hypothetical_part := _ |}.
+    refine {| form_of_judgement := form_object class_term; judgement_expression := _ |}.
+    unfold hypothetical_judgement_expressions.
+    intros. recursive_destruct i.
+    + refine (raw_symbol (include_metavariable L) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+      refine (raw_symbol (include_metavariable p) (empty_rect _ scope_is_empty _)).  
+    + refine (raw_symbol (include_symbol el_Qtr) _).
+      intros. recursive_destruct i.
+      * refine (raw_symbol (include_metavariable l) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_variable _).
+        apply zero_db.
+      * refine (raw_symbol (include_metavariable p) (empty_rect _ scope_is_empty _)).  
 Defined.
 
-End I_Qtr.
+End E_Qtr.
 
 
-Inductive rule_indexes := F_Tr_index | F_Tr_Eq_index | I_Tr_index | I_Tr_Eq_index | C_Tr_index 
-                        | F_Sigma_index | I_Sigma_index | E_Sigma_index | C_Sigma_index 
-                        | F_Eq_index | I_Eq_index | E_Eq_index | C_Eq_index.
+
+Section E_Qtr_eq.
+
+Inductive metas_E_Qtr_eq : Type := L_E_Qtr_eq | A_E_Qtr_eq | p_E_Qtr_eq | l_E_Qtr_eq | p'_E_Qtr_eq | l'_E_Qtr_eq.
+
+Let metas : arity DeBruijn.
+Proof.
+  exists metas_E_Qtr_eq.
+  intros.
+  induction H.
+  - refine (class_type, 1%nat).
+  - refine (class_type, 0%nat).
+  - refine (class_term, 0%nat).
+  - refine (class_term, 1%nat).
+  - refine (class_term, 0%nat).
+  - refine (class_term, 1%nat).
+Defined.
+
+Let L : family_index metas.
+Proof.
+  refine L_E_Qtr_eq.
+Defined.
+
+Let A : family_index metas.
+Proof.
+  refine A_E_Qtr_eq.
+Defined.
+
+Let p : family_index metas.
+Proof.
+  refine p_E_Qtr_eq.
+Defined.
+
+Let l : family_index metas.
+Proof.
+  refine l_E_Qtr_eq.
+Defined.
+
+Let p' : family_index metas.
+Proof.
+  refine p'_E_Qtr_eq.
+Defined.
+
+Let l' : family_index metas.
+Proof.
+  refine l'_E_Qtr_eq.
+Defined.
+
+Definition E_Qtr_eq : raw_rule Sig.
+Proof.
+  refine {| raw_rule_metas := metas; raw_rule_premise := [< _; _; _; _ >]; raw_rule_conclusion := _ |}.
+  - simple refine {| context_of_judgement := [: _ :]; hypothetical_part := _ |}.
+    + refine (raw_symbol (include_symbol Qtr) _).
+      intros. recursive_destruct i.
+      refine (raw_symbol (include_metavariable A) (empty_rect _ scope_is_empty _)).
+    + refine {| form_of_judgement := form_object class_type; judgement_expression := _ |}.
+      unfold hypothetical_judgement_expressions.
+      intros. recursive_destruct i.
+      refine (raw_symbol (include_metavariable L) (Metavariable.extend_args (empty_rect _ scope_is_empty _) (raw_variable _))).
+      apply zero_db.
+  - refine {| context_of_judgement := [: :]; hypothetical_part := _ |}.
+    refine {| form_of_judgement := form_equality class_term; judgement_expression := _ |}.
+    unfold hypothetical_judgement_expressions.
+    intros. recursive_destruct i.
+    + refine (raw_symbol (include_symbol Qtr) _).
+      intros. recursive_destruct i.
+      refine (raw_symbol (include_metavariable A) (empty_rect _ scope_is_empty _)).
+    + refine (raw_symbol (include_metavariable p) (empty_rect _ scope_is_empty _)).
+    + refine (raw_symbol (include_metavariable p') (empty_rect _ scope_is_empty _)).
+  - simple refine {| context_of_judgement := [: _ :]; hypothetical_part := _ |}.
+    + refine (raw_symbol (include_metavariable A) (empty_rect _ scope_is_empty _)).
+    + refine {| form_of_judgement := form_equality class_term; judgement_expression := _ |}.
+      unfold hypothetical_judgement_expressions.
+      intros. recursive_destruct i.
+      * refine (raw_symbol (include_metavariable L) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_symbol (include_symbol class) _).
+        intros. recursive_destruct i.
+        refine (raw_variable _).
+        apply zero_db.
+      * refine (raw_symbol (include_metavariable l) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_variable _).
+        apply zero_db.
+      * refine (raw_symbol (include_metavariable l') (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_variable _).
+        apply zero_db.
+  - simple refine {| context_of_judgement := [: _; _ :]; hypothetical_part := _ |}.
+    + refine (raw_symbol (include_metavariable A) (empty_rect _ scope_is_empty _)).
+    + refine (raw_symbol (include_metavariable A) (empty_rect _ scope_is_empty _)).
+    + refine {| form_of_judgement := form_equality class_term; judgement_expression := _ |}.
+      unfold hypothetical_judgement_expressions.
+      intros. recursive_destruct i.
+      * refine (raw_symbol (include_metavariable L) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_symbol (include_symbol class) _).
+        intros. recursive_destruct i.
+        refine (raw_variable _).
+        apply zero_db.
+      * refine (raw_symbol (include_metavariable l) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_variable _).
+        apply zero_db.
+      * refine (raw_symbol (include_metavariable l) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_variable _).
+        apply (succ_db zero_db).
+  - refine {| context_of_judgement := [: :]; hypothetical_part := _ |}.
+    refine {| form_of_judgement := form_equality class_term; judgement_expression := _ |}.
+    unfold hypothetical_judgement_expressions.
+    intros. recursive_destruct i.
+    + refine (raw_symbol (include_metavariable L) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+      refine (raw_symbol (include_metavariable p) (empty_rect _ scope_is_empty _)).  
+    + refine (raw_symbol (include_symbol el_Qtr) _).
+      intros. recursive_destruct i.
+      * refine (raw_symbol (include_metavariable l) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_variable _).
+        apply zero_db.
+      * refine (raw_symbol (include_metavariable p) (empty_rect _ scope_is_empty _)).
+    + refine (raw_symbol (include_symbol el_Qtr) _).
+      intros. recursive_destruct i.
+      * refine (raw_symbol (include_metavariable l') (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_variable _).
+        apply zero_db.
+      * refine (raw_symbol (include_metavariable p') (empty_rect _ scope_is_empty _)).
+Defined.
+
+End E_Qtr_eq.
+
+
+Section C_Qtr.
+
+Inductive metas_C_Qtr : Type := L_C_Qtr | A_C_Qtr | a_C_Qtr | l_C_Qtr.
+
+Let metas : arity DeBruijn.
+Proof.
+  exists metas_C_Qtr.
+  intros.
+  induction H.
+  - refine (class_type, 1%nat).
+  - refine (class_type, 0%nat).
+  - refine (class_term, 0%nat).
+  - refine (class_term, 1%nat).
+Defined.
+
+Let L : family_index metas.
+Proof.
+  refine L_C_Qtr.
+Defined.
+
+Let A : family_index metas.
+Proof.
+  refine A_C_Qtr.
+Defined.
+
+Let a : family_index metas.
+Proof.
+  refine a_C_Qtr.
+Defined.
+
+Let l : family_index metas.
+Proof.
+  refine l_C_Qtr.
+Defined.
+
+
+Definition C_Qtr : raw_rule Sig.
+Proof.
+  refine {| raw_rule_metas := metas; raw_rule_premise := [< _; _; _; _ >]; raw_rule_conclusion := _ |}.
+  - simple refine {| context_of_judgement := [: _ :]; hypothetical_part := _ |}.
+    + refine (raw_symbol (include_symbol Qtr) _).
+      intros. recursive_destruct i.
+      refine (raw_symbol (include_metavariable A) (empty_rect _ scope_is_empty _)).
+    + refine {| form_of_judgement := form_object class_type; judgement_expression := _ |}.
+      unfold hypothetical_judgement_expressions.
+      intros. recursive_destruct i.
+      refine (raw_symbol (include_metavariable L) (Metavariable.extend_args (empty_rect _ scope_is_empty _) (raw_variable _))).
+      apply zero_db.
+  - refine {| context_of_judgement := [: :]; hypothetical_part := _ |}.
+    refine {| form_of_judgement := form_object class_term; judgement_expression := _ |}.
+    unfold hypothetical_judgement_expressions.
+    intros. recursive_destruct i.
+    + refine (raw_symbol (include_metavariable A) (empty_rect _ scope_is_empty _)).
+    + refine (raw_symbol (include_metavariable a) (empty_rect _ scope_is_empty _)).
+  - simple refine {| context_of_judgement := [: _ :]; hypothetical_part := _ |}.
+    + refine (raw_symbol (include_metavariable A) (empty_rect _ scope_is_empty _)).
+    + refine {| form_of_judgement := form_object class_term; judgement_expression := _ |}.
+      unfold hypothetical_judgement_expressions.
+      intros. recursive_destruct i.
+      * refine (raw_symbol (include_metavariable L) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_symbol (include_symbol class) _).
+        intros. recursive_destruct i.
+        refine (raw_variable _).
+        apply zero_db.
+      * refine (raw_symbol (include_metavariable l) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_variable _).
+        apply zero_db.
+  - simple refine {| context_of_judgement := [: _; _ :]; hypothetical_part := _ |}.
+    + refine (raw_symbol (include_metavariable A) (empty_rect _ scope_is_empty _)).
+    + refine (raw_symbol (include_metavariable A) (empty_rect _ scope_is_empty _)).
+    + refine {| form_of_judgement := form_equality class_term; judgement_expression := _ |}.
+      unfold hypothetical_judgement_expressions.
+      intros. recursive_destruct i.
+      * refine (raw_symbol (include_metavariable L) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_symbol (include_symbol class) _).
+        intros. recursive_destruct i.
+        refine (raw_variable _).
+        apply zero_db.
+      * refine (raw_symbol (include_metavariable l) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_variable _).
+        apply zero_db.
+      * refine (raw_symbol (include_metavariable l) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_variable _).
+        apply (succ_db zero_db).
+  - refine {| context_of_judgement := [: :]; hypothetical_part := _ |}.
+    refine {| form_of_judgement := form_equality class_term; judgement_expression := _ |}.
+    unfold hypothetical_judgement_expressions.
+    intros. recursive_destruct i.
+    + refine (raw_symbol (include_metavariable L) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+      refine (raw_symbol (include_symbol class) _).
+      intros. recursive_destruct i.
+      refine (raw_symbol (include_metavariable a) (empty_rect _ scope_is_empty _)).
+    + refine (raw_symbol (include_symbol el_Qtr) _).
+      intros. recursive_destruct i.
+      * refine (raw_symbol (include_metavariable l) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+        refine (raw_variable _).
+        apply zero_db.
+      * refine (raw_symbol (include_symbol class) _).
+        intros. recursive_destruct i.
+        refine (raw_symbol (include_metavariable a) (empty_rect _ scope_is_empty _)).
+    + refine (raw_symbol (include_metavariable l) (Metavariable.extend_args (Metavariable.empty_args scope_is_empty) _)).
+      refine (raw_symbol (include_metavariable a) (empty_rect _ scope_is_empty _)).
+Defined.
+
+End C_Qtr.
+
+
+Inductive rule_indexes := F_Tr_index | I_Tr_index | C_Tr_index 
+                        | F_Sigma_index | F_Sigma_eq_index | I_Sigma_index | I_Sigma_eq_index | E_Sigma_index | E_Sigma_eq_index | C_Sigma_index 
+                        | F_Eq_index | F_Eq_eq_index | I_Eq_index | I_Eq_eq_index | E_Eq_index | C_Eq_index
+                        | F_Qtr_index | F_Qtr_eq_index | I_Qtr_index | eq_Qtr_index | E_Qtr_index | E_Qtr_eq_index | C_Qtr_index.
 
 
 
@@ -1479,13 +1753,25 @@ Proof.
   - refine I_Tr. 
   - refine C_Tr.
   - refine F_Sigma.
+  - refine F_Sigma_eq.  
   - refine I_Sigma.
+  - refine I_Sigma_eq.
   - refine E_Sigma.
+  - refine E_Sigma_eq.
   - refine C_Sigma.
   - refine F_Eq.
+  - refine F_Eq_eq.
   - refine I_Eq.
+  - refine I_Eq_eq.
   - refine E_Eq.
   - refine C_Eq.
+  - refine F_Qtr.
+  - refine F_Qtr_eq.  
+  - refine I_Qtr.
+  - refine eq_Qtr.
+  - refine E_Qtr.
+  - refine E_Qtr_eq.
+  - refine C_Qtr.
 Defined.
 
 
@@ -1529,6 +1815,16 @@ Proof.
   - refine b.
 Defined.
 
+End Eq_type.
+
+Definition Qtr_type {gamma : scope_carrier DeBruijn} (A : raw_type Sig (scope_sum gamma 0%nat)) : raw_type Sig gamma.
+Proof.
+  refine (raw_symbol Qtr _).
+  intros.
+  recursive_destruct i.
+  refine A.
+Defined.
+
 
 
 Definition star_term {gamma} : raw_term Sig gamma.
@@ -1556,6 +1852,11 @@ Proof.
   - refine m.
 Defined.
 
+
+
+
+
+
 Definition eq_term {gamma : scope_carrier DeBruijn} (C : raw_type Sig (scope_sum gamma 0%nat)) (c : raw_term Sig (scope_sum gamma 0%nat)) : raw_term Sig gamma.
 Proof.
   refine (raw_symbol eq _).
@@ -1571,21 +1872,20 @@ Defined.
 Inductive eval_type {gamma} : raw_type Sig gamma -> raw_type Sig gamma -> Type :=
   | Terminal_eval : eval_type Terminal_type Terminal_type
   | Sigma_eval A B : eval_type (Sigma_type A B) (Sigma_type A B)
-  | Eq_eval A a b : eval_type (Eq_type A a b) (Eq_type A a b).
+  | Eq_eval A a b : eval_type (Eq_type A a b) (Eq_type A a b)
+  | Qtr_eval A : eval_type (Qtr_type A) (Qtr_type A).
 
 
 
 Inductive eval_term {gamma} : raw_term Sig gamma -> raw_term Sig gamma -> Type :=
   | star_eval : eval_term star_term star_term
   | pair_eval1 a b : eval_term (pair_term a b) (pair_term a b)
-  (* pair_eval2 a b c d g m : eval_term c (pair_term a b) -> eval_term m g -> eval_term (el_Sigma_term d m) g *)
+  | pair_eval2 d b c g (m : raw_term Sig (scope_sum gamma 2%nat)) m_app : eval_term d (pair_term b c) -> eval_term m_app g -> eval_term (el_Sigma_term d m) g
   | equ_eval C c : eval_term (eq_term C c) (eq_term C c).
 
-  Local Unset Elimination Schemes.
+Local Unset Elimination Schemes.
 
-  Print Context.empty.
-
-  Set Asymmetric Patterns.
+Set Asymmetric Patterns.
 
 Lemma eval_canon_tm (c : raw_term Sig 0%nat) g:
   eval_term c g -> (g = star_term) + (exists a b, g = pair_term a b) + (exists a A, g = eq_term A a).
