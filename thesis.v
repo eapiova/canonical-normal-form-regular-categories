@@ -506,16 +506,6 @@ Proof.
   refine m_E_Sigma_symbol.
 Defined.
 
-
-Definition app_terms {gamma : scope_carrier DeBruijn} (m : raw_term Sig (scope_sum gamma 2%nat)) (b c : raw_term Sig (scope_sum gamma 0%nat)) : raw_term Sig gamma.
-Proof.
-  refine (instantiate_expression (_ _) (raw_symbol (include_metavariable m_E_Sigma) _)).
-  intros.
-  destruct i.
-  - refine d.
-  - refine m.
-Defined.
-
 Definition E_Sigma : raw_rule Sig.
 Proof.
   refine {| raw_rule_metas := metas_E_Sigma; raw_rule_premise := _; raw_rule_conclusion := _ |}.
@@ -1852,11 +1842,6 @@ Proof.
   - refine m.
 Defined.
 
-
-
-
-
-
 Definition eq_term {gamma : scope_carrier DeBruijn} (C : raw_type Sig (scope_sum gamma 0%nat)) (c : raw_term Sig (scope_sum gamma 0%nat)) : raw_term Sig gamma.
 Proof.
   refine (raw_symbol eq _).
@@ -1866,8 +1851,13 @@ Proof.
   - refine c.
 Defined.
 
-
-
+Definition class_term {gamma : scope_carrier DeBruijn} (a : raw_term Sig (scope_sum gamma 0%nat)) : raw_term Sig gamma.
+Proof.
+  refine (raw_symbol class _).
+  intros.
+  destruct i.
+  refine a.
+Defined.
 
 Inductive eval_type {gamma} : raw_type Sig gamma -> raw_type Sig gamma -> Type :=
   | Terminal_eval : eval_type Terminal_type Terminal_type
@@ -1875,12 +1865,10 @@ Inductive eval_type {gamma} : raw_type Sig gamma -> raw_type Sig gamma -> Type :
   | Eq_eval A a b : eval_type (Eq_type A a b) (Eq_type A a b)
   | Qtr_eval A : eval_type (Qtr_type A) (Qtr_type A).
 
-
-
 Inductive eval_term {gamma} : raw_term Sig gamma -> raw_term Sig gamma -> Type :=
   | star_eval : eval_term star_term star_term
   | pair_eval1 a b : eval_term (pair_term a b) (pair_term a b)
-  | pair_eval2 d b c g (m : raw_term Sig (scope_sum gamma 2%nat)) m_app : eval_term d (pair_term b c) -> eval_term m_app g -> eval_term (el_Sigma_term d m) g
+  (*| pair_eval2 d b c g (m : raw_term Sig (scope_sum gamma 2%nat)) m_app : eval_term d (pair_term b c) -> eval_term m_app g -> eval_term (el_Sigma_term d m) g*)
   | equ_eval C c : eval_term (eq_term C c) (eq_term C c).
 
 Local Unset Elimination Schemes.
