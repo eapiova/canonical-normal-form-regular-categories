@@ -1833,12 +1833,12 @@ Proof.
   - refine b.
 Defined.
 
-Definition el_Sigma_term {gamma : scope_carrier DeBruijn} (d : raw_term Sig (scope_sum gamma 0%nat)) (m : raw_term Sig (scope_sum gamma 2%nat)) : raw_term Sig gamma.
+Definition el_Sigma_term {gamma : scope_carrier DeBruijn} (d : raw_term Sig gamma) (m : raw_term Sig (scope_sum gamma 2%nat)) : raw_term Sig gamma.
 Proof.
   refine (raw_symbol el_Sigma _).
   intros.
   destruct i.
-  - refine d.
+  - destruct f. unfold argument_scope. simpl. rewrite <- add_n_O. refine d.
   - refine m.
 Defined.
 
@@ -1859,6 +1859,44 @@ Proof.
   refine a.
 Defined.
 
+Definition el_Qtr_term {gamma : scope_carrier DeBruijn} (l : raw_term Sig ((gamma+1)%nat)) (p : raw_term Sig gamma) : raw_term Sig gamma.
+Proof.
+  refine (raw_symbol el_Qtr _).
+  intros.
+  destruct i.
+  - refine l.
+  - unfold argument_scope. simpl. rewrite <- add_n_O. refine p.
+Defined.
+
+
+Definition sigma_subst {gamma : scope_carrier DeBruijn} (b c : raw_term Sig (scope_sum gamma 0%nat)): raw_substitution Sig gamma (scope_sum gamma 2%nat).
+Proof.
+  unfold raw_substitution.
+  intros.
+  simpl in *.
+  rewrite <- add_n_O in b.
+  rewrite <- add_n_O in c.
+  destruct X.
+  - apply b.
+  - apply c.
+Defined.
+
+Definition qtr_subst {gamma : scope_carrier DeBruijn} (a : raw_term Sig (scope_sum gamma 0%nat)): raw_substitution Sig gamma (scope_sum gamma 1%nat).
+Proof.
+  unfold raw_substitution.
+  intros.
+  simpl in *.
+  rewrite <- add_n_O in a.
+  apply a.
+Defined.
+
+
+
+
+Local Unset Elimination Schemes.
+
+Set Asymmetric Patterns.
+
 Inductive eval_type {gamma} : raw_type Sig gamma -> raw_type Sig gamma -> Type :=
   | Terminal_eval : eval_type Terminal_type Terminal_type
   | Sigma_eval A B : eval_type (Sigma_type A B) (Sigma_type A B)
@@ -1868,24 +1906,42 @@ Inductive eval_type {gamma} : raw_type Sig gamma -> raw_type Sig gamma -> Type :
 Inductive eval_term {gamma} : raw_term Sig gamma -> raw_term Sig gamma -> Type :=
   | star_eval : eval_term star_term star_term
   | pair_eval1 a b : eval_term (pair_term a b) (pair_term a b)
-  (*| pair_eval2 d b c g (m : raw_term Sig (scope_sum gamma 2%nat)) m_app : eval_term d (pair_term b c) -> eval_term m_app g -> eval_term (el_Sigma_term d m) g*)
-  | equ_eval C c : eval_term (eq_term C c) (eq_term C c).
+  | pair_eval2 d b c g (m : raw_term Sig (scope_sum gamma 2%nat)) : eval_term d (pair_term b c) -> eval_term (substitute (sigma_subst b c) m) g -> eval_term (el_Sigma_term d m) g  
+  | equ_eval C c : eval_term (eq_term C c) (eq_term C c)
+  | class_eval a : eval_term (class_term a) (class_term a)
+  | class_eval2 a p (l : raw_term Sig (scope_sum gamma 1%nat)) g : eval_term p (class_term a) -> eval_term (substitute (qtr_subst a) l) g -> eval_term (el_Qtr_term l p) g.
 
-Local Unset Elimination Schemes.
+  Scheme eval_ind := Induction for eval_term Sort Type.
+  Scheme eval_rec := Minimality for eval_term Sort Type.
+  Definition eval_term_rect := eval_ind.
 
-Set Asymmetric Patterns.
+
 
 Lemma eval_canon_tm (c : raw_term Sig 0%nat) g:
-  eval_term c g -> (g = star_term) + (exists a b, g = pair_term a b) + (exists a A, g = eq_term A a).
+  eval_term c g -> (g = star_term) + (exists a b, g = pair_term a b) + (exists a A, g = eq_term A a) + (exists a, g = class_term a).
+Proof.
+  intros.
+  induction X.
+  - left. left. left. reflexivity.
+  - left. left. right. exists a. exists b. reflexivity.
+  - apply IHX2.
+  - left. right. exists c. exists C0. reflexivity.
+  - right. exists a. reflexivity.
+  - apply IHX2.
+Defined.
+
+Lemma eval_canon_ty (C : raw_type Sig 0%nat) G:
+  eval_type C G -> (G = Terminal_type) + (exists A B, G = Sigma_type A B) + (exists a b A, G = Eq_type A a b) + (exists A, G = Qtr_type A).
 Proof.
   intros.
   destruct X.
-Admitted.
+  - left. left. left. reflexivity.
+  - left. left. right. exists A. exists B0. reflexivity.
+  - left. right. exists a. exists b. exists A. reflexivity.
+  - right. exists A. reflexivity.
+Defined.
 
-Lemma eval_canon_ty (C : raw_type Sig 0%nat) G:
-  eval_type C G -> (G = Terminal_type) + (exists A B, G = Sigma_type A B) + (exists a b A, G = Eq_type A a b).
-Proof.
-Admitted.
+Definition computable_closed_substitution := forall 
 
 Inductive computable : judgement Sig -> Type :=
   | ty_comp A : derivable [! [: :] |- A !] ->
@@ -1893,36 +1949,40 @@ Inductive computable : judgement Sig -> Type :=
                 eval_type A G /\
                 derivable [! [: :] |- A ≡ G !] /\
                 (forall A1 A2, G = Sigma_type A1 A2 -> computable [! [: :] |- A1 !] /\ computable [! [: A1 :] |- A2 !]) /\
-                (forall A1 b d, G = Eq_type A1 b d -> computable [! [: :] |- A1 !] /\ computable [! [: :] |- b ; A1 !] /\ computable [! [: :] |- d ; A1 !])) ->
+                (forall A1 b d, G = Eq_type A1 b d -> computable [! [: :] |- A1 !] /\ computable [! [: :] |- b ; A1 !] /\ computable [! [: :] |- d ; A1 !]) /\
+                (forall C, G = Qtr_type C -> computable [! [: :] |- C !])) ->
                 computable [! [: :] |- A !]
   | tyeq_comp A B : derivable [! [: :] |- A ≡ B !] ->
                     computable [! [: :] |- A !] /\ computable [! [: :] |- B !] /\
                     (exists GA GB, 
                     eval_type A GA /\ eval_type B GB /\
+                    (GA = Terminal_type <-> GB = Terminal_type) /\
                     (forall A1 A2 B1 B2, (GA = Sigma_type A1 A2 <-> GB = Sigma_type B1 B2) /\ (GA = Sigma_type A1 A2 -> computable [! [: :] |- A1 ≡ B1 !] /\ computable [! [: A1 :] |- A2 ≡ B2 !])) /\
                     (forall A1 B1 a b c d, (GA = Eq_type A1 a c <-> GB = Eq_type B1 b d)  /\ (GA = Eq_type A1 a c -> computable [! [: :] |- A1 ≡ B1 !] /\ computable [! [: :] |- a ≡ b ; A1 !] /\ computable [! [: :] |- c ≡ d ; A1 !])) /\ 
-                    (GA = Terminal_type <-> GB = Terminal_type)) ->
+                    (forall C D, (GA = Qtr_type C <-> GB = Qtr_type D) /\ (GA = Qtr_type C -> computable [! [: :] |- C ≡ D !]))) ->
                     computable [! [: :] |- A ≡ B !]
-  | tm_comp c A : derivable [! [: :] |- c ; A !] ->
+  | tm_comp a A : derivable [! [: :] |- a ; A !] ->
                   computable [! [: :] |- A !] /\
                   (exists G g, 
                   eval_type A G /\
-                  eval_term c g /\
-                  derivable [! [: :] |- c ≡ g ; A !] /\
-                  (forall A1 A2 a b, (G = Sigma_type A1 A2 <-> g = pair_term a b) /\ (G = Sigma_type A1 A2 -> computable [! [: :] |- a ; A1 !] /\ computable [! [: :] |- b ; substitute (fun _ => a) A2 !])) /\
+                  eval_term a g /\
+                  derivable [! [: :] |- a ≡ g ; A !] /\
+                  (G = Terminal_type <-> g = star_term) /\
+                  (forall C D c d, (G = Sigma_type C D <-> g = pair_term c d) /\ (G = Sigma_type C D -> computable [! [: :] |- c ; C !] /\ computable [! [: :] |- d ; substitute (fun _ => c) D !])) /\
                   (forall A1 b c d, (G = Eq_type A1 b d <-> g = eq_term A1 c) /\ (G = Eq_type A1 b d -> computable [! [: :] |- b ≡ d ; A1 !])) /\
-                  (G = Terminal_type <-> g = star_term)) ->
-                  computable [! [: :] |- c ; A !]
+                  (forall C c, (G = Qtr_type C <-> g = class_term c) /\ (G = Qtr_type C -> computable [! [: :] |- c ; C !]))) ->
+                  computable [! [: :] |- a ; A !]
   | tmeq_comp A a b : derivable [! [: :] |- a ≡ b ; A !] ->
                     computable [! [: :] |- a ; A !] /\ computable [! [: :] |- b ; A !] /\
                     (exists G ga gb, 
                     eval_type A G /\ eval_term a ga /\ eval_term b gb /\
+                    (G = Terminal_type <-> ga = star_term /\ gb = star_term) /\
                     (forall A1 A2 a1 a2 b1 b2, (G = Sigma_type A1 A2 <-> ga = pair_term a1 a2 /\ gb = pair_term b1 b2) /\ (G = Sigma_type A1 A2 -> computable [! [: :] |- a1 ≡ b1 ; A1 !] /\ computable [! [: :] |- a2 ≡ b2 ; substitute (fun _ => a1) A2 !])) /\
                     (forall A1 b c d f, (G = Eq_type A1 c d <-> ga = eq_term A1 b /\ gb = eq_term A1 f) /\ (G = Eq_type A1 c d -> computable [! [: :] |- c ≡ d ; A1 !])) /\
-                    (G = Terminal_type <-> ga = star_term /\ gb = star_term))
+                    (forall C c1 c2, (G = Qtr_type C <-> ga = class_term c1 /\ gb = class_term c2) /\ (G = Qtr_type C -> computable [! [: :] |- c1 ; C !] /\ computable [! [: :] |- c2 ; C !])))
                     ->
-                    computable [! [: :] |- a ≡ b ; A !].
-  (*| ty_comp_ass Gamma B : derivable [! Gamma |- B !] -> (forall s : raw_substitution Sig 0%nat Gamma, computable [! [: :] |- substitute s B !]) -> computable [! Gamma |- B !] *)
+                    computable [! [: :] |- a ≡ b ; A !]
+  | ty_comp_ass Gamma B : derivable [! Gamma |- B !] -> (forall s : raw_substitution Sig 0%nat Gamma, computable [! [: :] |- substitute s B !]) -> computable [! Gamma |- B !].
 
   Scheme computable_ind := Induction for computable Sort Type.
   Scheme computable_rec := Minimality for computable Sort Type.
