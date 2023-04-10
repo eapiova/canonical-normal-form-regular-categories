@@ -1731,9 +1731,6 @@ Inductive rule_indexes := F_Tr_index | I_Tr_index | C_Tr_index
                         | F_Eq_index | F_Eq_eq_index | I_Eq_index | I_Eq_eq_index | E_Eq_index | C_Eq_index
                         | F_Qtr_index | F_Qtr_eq_index | I_Qtr_index | eq_Qtr_index | E_Qtr_index | E_Qtr_eq_index | C_Qtr_index.
 
-
-
-
 Definition TReg : raw_type_theory Sig.
 Proof.
   exists rule_indexes.
@@ -1762,6 +1759,11 @@ Proof.
   - refine E_Qtr.
   - refine E_Qtr_eq.
   - refine C_Qtr.
+Defined.
+
+Definition F_Tr_id : TReg.
+Proof.
+  refine F_Tr_index.
 Defined.
 
 
@@ -1890,6 +1892,75 @@ Proof.
   apply a.
 Defined.
 
+Context `{Funext}.
+
+Definition empty_instantiation Gamma : Metavariable.instantiation [< >] Sig Gamma. 
+Proof.
+  unfold Metavariable.instantiation.
+  intros.
+  destruct i.
+Defined.
+
+Lemma refl_ty_derivable_empty_context A :
+  derivable [! [: :] |- A !] -> derivable [! [: :] |- A ≡ A!].
+Proof.
+Admitted.
+
+Lemma refl_tm_derivable_empty_context a A :
+  derivable [! [: :] |- a ; A !] -> derivable [! [: :] |- a ≡ a ; A!].
+Proof.
+Admitted.
+
+Lemma F_Tr_derivable_empty_context :
+  derivable [! [: :] |- Terminal_type !].
+Proof.
+  exists [< >].
+  simple refine (Closure.deduce' _ _ _).
+  + simple refine (inr (F_Tr_index; [::]; empty_instantiation [::])).
+  + unfold Terminal_type. apply Judgement.eq_by_eta. simpl. apply Judgement.eq_by_expressions.
+    * intros. apply DB_is_empty. apply i.
+    * intros. simpl. destruct i; try reflexivity.
+      apply ap. apply path_forall. unfold "==". intros.
+        destruct x.
+  + intros; destruct p.
+Defined.
+
+Lemma I_Tr_derivable_empty_context :
+  derivable [! [: :] |- star_term ; Terminal_type !].
+Proof.
+  exists [< >].
+  simple refine (Closure.deduce' _ _ _).
+  + simple refine (inr (I_Tr_index; [::]; empty_instantiation [::])).
+  + unfold Terminal_type. apply Judgement.eq_by_eta. simpl. apply Judgement.eq_by_expressions.
+    * intros. apply DB_is_empty. apply i.
+    * intros. simpl. destruct i; try reflexivity.
+      -- destruct f. apply ap. apply path_forall. unfold "==". intros.
+        destruct x.
+      -- unfold star_term. apply ap. apply path_forall. unfold "==". intros.
+      destruct x.
+  + intros; destruct p.
+Defined.
+
+Lemma C_Tr_derivable_empty_context t :
+  derivable [! [: :] |- t ; Terminal_type !] -> derivable [! [: :] |- t ≡ star_term ; Terminal_type !].
+Proof.
+  exists [< [! [: :] |- t ; Terminal_type !] >].
+  simple refine (Closure.deduce' _ _ _).
+  + simple refine (inr (C_Tr_index; [::]; _)).
+    unfold Metavariable.instantiation.
+    intros.
+    destruct i.
+    apply t.
+  + unfold Terminal_type. apply Judgement.eq_by_eta. simpl. apply Judgement.eq_by_expressions.
+    * intros. apply DB_is_empty. apply i.
+    * intros. simpl. destruct i. -- destruct f. apply ap; apply path_forall; unfold "=="; intros. destruct x.
+      -- admit.
+      -- unfold star_term. apply ap; apply path_forall; unfold "=="; intros. destruct x.
+  + intros; destruct p. admit.
+Admitted.
+
+
+
 
 
 
@@ -1941,7 +2012,6 @@ Proof.
   - right. exists A. reflexivity.
 Defined.
 
-Definition computable_closed_substitution := forall 
 
 Inductive computable : judgement Sig -> Type :=
   | ty_comp A : derivable [! [: :] |- A !] ->
@@ -1973,7 +2043,7 @@ Inductive computable : judgement Sig -> Type :=
                   (forall C c, (G = Qtr_type C <-> g = class_term c) /\ (G = Qtr_type C -> computable [! [: :] |- c ; C !]))) ->
                   computable [! [: :] |- a ; A !]
   | tmeq_comp A a b : derivable [! [: :] |- a ≡ b ; A !] ->
-                    computable [! [: :] |- a ; A !] /\ computable [! [: :] |- b ; A !] /\
+                    (computable [! [: :] |- a ; A !] /\ computable [! [: :] |- b ; A !]) /\
                     (exists G ga gb, 
                     eval_type A G /\ eval_term a ga /\ eval_term b gb /\
                     (G = Terminal_type <-> ga = star_term /\ gb = star_term) /\
@@ -1982,9 +2052,69 @@ Inductive computable : judgement Sig -> Type :=
                     (forall C c1 c2, (G = Qtr_type C <-> ga = class_term c1 /\ gb = class_term c2) /\ (G = Qtr_type C -> computable [! [: :] |- c1 ; C !] /\ computable [! [: :] |- c2 ; C !])))
                     ->
                     computable [! [: :] |- a ≡ b ; A !]
-  | ty_comp_ass Gamma B : derivable [! Gamma |- B !] -> (forall s : raw_substitution Sig 0%nat Gamma, computable [! [: :] |- substitute s B !]) -> computable [! Gamma |- B !].
+  (*| ty_comp_ass Gamma B : derivable [! Gamma |- B !] -> (forall s : raw_substitution Sig 0%nat Gamma, computable [! [: :] |- substitute s B !]) -> computable [! Gamma |- B !]*).
 
   Scheme computable_ind := Induction for computable Sort Type.
   Scheme computable_rec := Minimality for computable Sort Type.
   Definition computable_rect := computable_ind.
+
+Axiom inversion_lemma_tm : 
+forall a A, computable [! [: :] |- a ; A !] -> derivable [! [: :] |- a ; A !] /\
+                                                computable [! [: :] |- A !] /\
+                                                (exists G g, 
+                                                eval_type A G /\
+                                                eval_term a g /\
+                                                derivable [! [: :] |- a ≡ g ; A !] /\
+                                                (G = Terminal_type <-> g = star_term) /\
+                                                (forall C D c d, (G = Sigma_type C D <-> g = pair_term c d) /\ (G = Sigma_type C D -> computable [! [: :] |- c ; C !] /\ computable [! [: :] |- d ; substitute (fun _ => c) D !])) /\
+                                                (forall A1 b c d, (G = Eq_type A1 b d <-> g = eq_term A1 c) /\ (G = Eq_type A1 b d -> computable [! [: :] |- b ≡ d ; A1 !])) /\
+                                                (forall C c, (G = Qtr_type C <-> g = class_term c) /\ (G = Qtr_type C -> computable [! [: :] |- c ; C !]))).
+
+
+Lemma F_Tr_computable_empty_context :
+  computable [! [::] |- Terminal_type !].
+Proof.
+  constructor.
+    * apply F_Tr_derivable_empty_context.
+    * exists Terminal_type. split; [|split]. 
+      - apply Terminal_eval.
+      - apply refl_ty_derivable_empty_context. apply F_Tr_derivable_empty_context.
+      - repeat split; easy.
+Defined.
+
+Lemma I_Tr_computable_empty_context :
+  computable [! [: :] |- star_term ; Terminal_type !].
+Proof.
+  constructor.
+  - apply I_Tr_derivable_empty_context.
+  - split. 
+    + apply F_Tr_computable_empty_context.
+    + exists Terminal_type, star_term.
+      split; [|split]; [| |split]. 
+      * apply Terminal_eval.
+      * apply star_eval.
+      * apply refl_tm_derivable_empty_context.
+        apply I_Tr_derivable_empty_context. 
+      * repeat split; easy.
+Defined.
+
+Lemma C_Tr_computable_empty_context t :
+  computable [! [: :] |- t ; Terminal_type !] -> computable [! [: :] |- t ≡ star_term ; Terminal_type !].
+Proof.
+  constructor.
+  - apply C_Tr_derivable_empty_context.
+    apply inversion_lemma_tm.
+    apply X. 
+  - split. 
+    + split; [apply X | apply I_Tr_computable_empty_context]. 
+    + apply inversion_lemma_tm in X. destruct X as (H1 & H2 & H3 & g & H5 & H6 & H7 & H8 & H9 & H10 & H11). 
+      exists Terminal_type. exists g. exists star_term.
+      split; [|split]; [| |split].
+      * constructor.
+      * apply H6.
+      * constructor.
+      * repeat split; try easy; try intros; try destruct X; try easy.
+        destruct H8. apply fst. destruct H5; easy.
+Defined.
+
 
