@@ -120,20 +120,24 @@ Inductive computable : judgement Sig -> Type :=
                     (exists C c1 c2, (G = Qtr_type C /\ ga = class_term c1 /\ gb = class_term c2) /\ computable [! [: :] |- c1 ; C !] /\ computable [! [: :] |- c2 ; C !]))
                     ->
                     computable [! [: :] |- a ≡ b ; A !]
-  | ty_comp_ass Gamma B : derivable [! Gamma |- B !] -> 
-                          (forall s : raw_substitution Sig 0%nat Gamma, computable [! [: :] |- substitute s B !]) -> 
+  | ty_comp_ass Gamma B : derivable [! Gamma |- B !] ->
+                          (forall i a A, derivable [! [::] |- (a i) ; (A i) !] -> computable [! [: :] |- substitute (fun i => (a i)) B !]) ->
+                          (forall i a c A, derivable [! [::] |- (a i) ≡ (c i); (A i) !] -> computable [! [: :] |- substitute (fun i => (a i)) B ≡ substitute (fun i => (c i)) B !]) ->
                           computable [! Gamma |- B !]
   | tyeq_comp_ass Gamma B D : derivable [! Gamma |- B ≡ D !] -> 
                           computable [! Gamma |- B !] ->
-                          (forall s : raw_substitution Sig 0%nat Gamma, computable [! [: :] |- substitute s B ≡ substitute s D  !]) -> 
+                          (forall i a A, derivable [! [::] |- (a i) ; (A i) !] -> computable [! [: :] |- substitute (fun i => (a i)) B ≡ substitute (fun i => (a i)) D !]) ->
+                          (forall i a c A, derivable [! [::] |- (a i) ≡ (c i); (A i) !] -> computable [! [: :] |- substitute (fun i => (a i)) B ≡ substitute (fun i => (c i)) D !]) ->
                           computable [! Gamma |- B ≡ D !]
   | tm_comp_ass Gamma b B : derivable [! Gamma |- b ; B !] -> 
                           computable [! Gamma |- B !] ->
-                          (forall s : raw_substitution Sig 0%nat Gamma, computable [! [: :] |- substitute s b ; substitute s B !]) -> 
+                          (forall i a A, derivable [! [::] |- (a i) ; (A i) !] -> computable [! [: :] |- substitute (fun i => (a i)) b ; substitute (fun i => (a i)) B !]) ->
+                          (forall i a c A, derivable [! [::] |- (a i) ≡ (c i); (A i) !] -> computable [! [: :] |- substitute (fun i => (a i)) b ≡ substitute (fun i => (c i)) b ; substitute (fun i => (a i)) B !]) -> 
                           computable [! Gamma |- b ; B !]
   | tmeq_comp_ass Gamma b d B : derivable [! Gamma |- b ≡ d; B !] -> 
                           computable [! Gamma |- b ; B !] ->
-                          (forall s : raw_substitution Sig 0%nat Gamma, computable [! [: :] |- substitute s b ≡ substitute s d ; substitute s B !]) -> 
+                          (forall i a A, derivable [! [::] |- (a i) ; (A i) !] -> computable [! [: :] |- substitute (fun i => (a i)) b ≡ substitute (fun i => (a i)) d ; substitute (fun i => (a i)) B !]) ->
+                          (forall i a c A, derivable [! [::] |- (a i) ≡ (c i); (A i) !] -> computable [! [: :] |- substitute (fun i => (a i)) b ≡ substitute (fun i => (c i)) d ; substitute (fun i => (a i)) B !]) ->
                           computable [! Gamma |- b ≡ d ; B !].
 
   Scheme computable_ind := Induction for computable Sort Type.
@@ -235,6 +239,11 @@ forall Gamma B D, computable [! Gamma |- B ≡ D !] ->
                                                 derivable [! Gamma |- B ≡ D !] /\
                           computable [! Gamma |- B !] /\
                           (forall s : raw_substitution Sig 0%nat Gamma, computable [! [: :] |- substitute s B ≡ substitute s D  !]).
+
+Lemma refl_tm_computable_empty_context a A:
+  computable [![::] |- a ; A!] -> computable [![::] |- a ≡ a ; A!].
+Proof.
+Admitted.
 
 
 Lemma F_Tr_computable_empty_context :
@@ -402,25 +411,159 @@ Proof.
       destruct X.
       split; apply F_Eq_computable_empty_context; easy.
     - exists (Eq_type C c d). exists (Eq_type E e f); split; [|split]; try constructor. 
-      right. exists C. exists E. exists c. exists e. exists d. exists f. repeat split; easy.
+      right. exists C, E, c, e, d, f. repeat split; easy.
 Defined.
 
 Lemma I_Eq_computable_empty_context c C :
   computable [! [: :] |- c ; C !] -> computable [! [: :] |- eq_term C c ; Eq_type C c c !].
+Proof.
+  constructor.
+  - apply I_Eq_derivable_empty_context; apply inversion_lemma_deriv; easy.
+  - split. 
+    + apply inversion_lemma_tm_assoc in X as H.
+      apply F_Eq_computable_empty_context; easy.
+    + exists (Eq_type C c c), (eq_term C c).
+      split; [|split]; [| |split]. 
+      * apply Eq_eval.
+      * apply equ_eval.
+      * apply refl_tm_derivable_empty_context.
+        apply I_Eq_derivable_empty_context; apply inversion_lemma_deriv; easy.
+      * left. right. exists C, c, c, c. repeat split; try easy; apply refl_tm_computable_empty_context; easy.   
+Defined.
+
+(*
+Definition Eq_type_var_dep {gamma : scope_carrier DeBruijn} (C : raw_type Sig (gamma)%nat) : raw_type Sig (gamma+1)%nat.
+Proof.
+  refine (raw_symbol Eq _).
+  intros.
+  recursive_destruct i.
+  - unfold argument_scope; simpl; rewrite <- add_n_O. unfold argument_class; simpl. apply (rename succ_db _)  in C. refine C.
+  - unfold argument_scope; simpl; rewrite <- add_n_O; refine (raw_variable _). destruct gamma; apply zero_db.
+  - unfold argument_scope; simpl; rewrite <- add_n_O; refine (raw_variable _). destruct gamma; apply zero_db.
+Defined.
+*)
+(*
+Lemma F_Eq_computable_dependent C :
+  computable [! [: C :] |- Eq_type_var_dep C !].
+  *)
+
+Lemma sub_eq_ty_Eq_computable c d C :
+  computable [! [: :] |- c ≡ d ; C !] -> computable [! [: :] |- Eq_type C c c ≡ Eq_type C d d !].
 Proof.
 Admitted.
 
 Lemma I_Eq_eq_computable_empty_context c d C :
   computable [! [: :] |- c ≡ d ; C !] -> computable [! [: :] |- eq_term C c ≡ eq_term C d ; Eq_type C c c !].
 Proof.
-Admitted.
+  constructor.
+  - apply I_Eq_eq_derivable_empty_context; apply inversion_lemma_deriv; easy.
+  - split. 
+    + apply inversion_tm_eq_assoc in X as H; destruct H; split; apply inversion_lemma_tm_assoc in fst as H1; try apply I_Eq_computable_empty_context; try easy.
+      apply sub_eq_ty_Eq_computable in X as H2.
+      apply (elements_equal_types (eq_term C d)) in H2.
+      apply H2.
+      apply I_Eq_computable_empty_context; easy.
+    + exists (Eq_type C c c), (eq_term C c), (eq_term C d).
+      split; [|split]; [| |split]. 
+      * apply Eq_eval.
+      * apply equ_eval.
+      * apply equ_eval.
+      * left. right. exists C, c, c, c, d. repeat split; try easy. apply inversion_tm_eq_assoc in X as H; destruct H; apply refl_tm_computable_empty_context; easy.   
+Defined.
 
 Lemma E_Eq_computable_empty_context c d p C :
   computable [! [::] |- p ; Eq_type C c d !] -> computable [! [::] |- C !] -> computable [! [: :] |- c ; C !] -> computable [! [::] |- d ; C !] -> computable [! [::] |- c ≡ d ; C !].
 Proof.
+  constructor.
+  - apply (E_Eq_derivable_empty_context c d p); apply inversion_lemma_deriv; easy.
+  - repeat split; try easy.
+    admit.
 Admitted.
 
 Lemma C_Eq_computable_empty_context c d p C :
   computable [! [::] |- p ; Eq_type C c d !] -> computable [! [::] |- p ≡ eq_term C c ; Eq_type C c d !].
 Proof.
+  constructor.
+  - apply C_Eq_derivable_empty_context; apply inversion_lemma_deriv; easy.
+  - split.
+    + split; try easy.
+      apply inversion_lemma_tm_eval in X as X1.
+      destruct X1 as (G & g & H1 & H2 & H5 & H6). destruct H6 as [[[H9 | H10] | H11] | H12].
+        -- destruct H9. rewrite fst in H1. inversion H1.
+        -- destruct H10 as (H10 & H11 & H12 & H13 & H14 & H15). destruct H14. rewrite fst in H1. inversion H1.
+        -- destruct H11 as (A & a & e & b & H14 & H15). destruct H14. rewrite fst in H1. admit. 
+        -- destruct H12 as (H10 & H11 & H12). destruct H12. destruct fst. rewrite fst in H1. inversion H1.
 Admitted.
+
+Lemma F_Qtr_computable_empty_context A :
+  computable [! [::] |- A !] -> computable [! [::] |- Qtr_type A !].
+Proof.
+  constructor.
+  * apply F_Qtr_derivable_empty_context.
+    apply inversion_lemma_deriv in X; easy.
+  * exists (Qtr_type A). split; [|split]. 
+    - apply Qtr_eval.
+    - apply refl_ty_derivable_empty_context. apply F_Qtr_derivable_empty_context.
+    apply inversion_lemma_deriv in X; easy.
+    - right. exists A. repeat split; easy.
+Defined.
+
+Lemma F_Qtr_eq_computable_empty_context A B :
+  computable [! [::] |- A ≡ B !] -> computable [! [::] |- Qtr_type A ≡ Qtr_type B !].
+Proof.
+  constructor.
+  * apply F_Qtr_eq_derivable_empty_context.
+    apply inversion_lemma_deriv in X; easy.
+  * split.
+    - apply inversion_lemma_ty_eq_assoc in X. destruct X; split; apply F_Qtr_computable_empty_context; easy.
+    - exists (Qtr_type A), (Qtr_type B). repeat split. { constructor. } { constructor. }
+      right. exists A, B. repeat split; easy.
+Defined.
+
+Lemma I_Qtr_computable_empty_context a A :
+  computable [! [::] |- a ; A !] -> computable [! [::] |- class_term a ; Qtr_type A !].
+Proof.
+  constructor.
+  - apply I_Qtr_derivable_empty_context; apply inversion_lemma_deriv; easy.
+  - split. 
+    + apply inversion_lemma_tm_assoc in X; apply F_Qtr_computable_empty_context; easy.
+    + exists (Qtr_type A), (class_term a).
+      split; [|split]; [| |split]. 
+      * apply Qtr_eval.
+      * apply class_eval.
+      * apply refl_tm_derivable_empty_context.
+        apply I_Qtr_derivable_empty_context; apply inversion_lemma_deriv; easy.
+      * right. exists A, a. repeat split; easy.   
+Defined.
+
+Lemma eq_Qtr_computable_empty_context a b A :
+  computable [! [::] |- a ; A !] -> computable [! [::] |- b ; A !] -> computable [! [::] |- class_term a ≡ class_term b ; Qtr_type A !].
+Proof.
+  constructor.
+  - apply eq_Qtr_derivable_empty_context; apply inversion_lemma_deriv; easy.
+  - split. 
+    + split; apply I_Qtr_computable_empty_context; easy.
+    + exists (Qtr_type A), (class_term a), (class_term b).
+      split; [|split]; [| |split]. { constructor. } { constructor. }{ constructor. } 
+      right. exists A, a, b. repeat split; easy.   
+Defined.
+
+(*
+Lemma E_Sigma_computable_empty_context 
+x y d d' (m m' : raw_term Sig 2%nat) B C M :
+computable [! [: Sigma_type B C :] |- M !] -> computable [! [: :] |- d ≡ d' ; Sigma_type B C !] -> computable [! [: B ; C :] |- m ≡ m' ; substitute (fun z => pair_term (raw_variable x) (raw_variable y) ) M !] -> computable [! [::] |- el_Sigma_term d m ≡ el_Sigma_term d' m' ; substitute (fun _ => d) M !].
+Proof.
+  constructor.
+  - apply E_Sigma_derivable_empty_context; apply inversion_lemma_deriv; easy.
+  - split. 
+    + split; [apply X | apply I_Tr_computable_empty_context]. 
+    + apply inversion_lemma_tm in X. destruct X as (H1 & H2 & H3 & g & H5 & H6 & H7 & H8 & H9 & H10 & H11). 
+      exists Terminal_type. exists g. exists star_term.
+      split; [|split]; [| |split].
+      * constructor.
+      * apply H6.
+      * constructor.
+      * repeat split; try easy; try intros; try destruct X; try easy.
+        destruct H8. apply fst. destruct H5; easy.
+Defined.
+*)

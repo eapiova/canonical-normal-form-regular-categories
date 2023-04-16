@@ -2046,6 +2046,10 @@ Lemma eq_Qtr_derivable_empty_context a b A :
 Proof.
 Admitted.
 
+Lemma E_Qtr_derivable_empty_context A L l p  :
+  derivable [! [: Qtr_type A :] |- L !] -> derivable [! [: :] |- p ; Qtr_type A !] -> derivable [! [: A :] |- l ; substitute (fun x => class_term (raw_variable x)) L !] -> derivable [! [: A ; rename (plusone_inj _ _ (scope_is_extend _ _)) A :] |- l ≡ rename _ l ; substitute (fun x => class_term (raw_variable x)) L !] -> derivable [! [::] |- el_Qtr_term l p ; substitute (fun _ => p) L !].
+Proof.
+Admitted.
 
 (*
 Lemma E_Qtr_derivable_empty_context A L l p x y d (m : raw_term Sig 2%nat) B C M :
