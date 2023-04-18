@@ -29,7 +29,7 @@ From GeneralTT Require Import TypeTheory.
 
 
 
-
+(* Computation/Operational semantics rules *)
 
 Local Unset Elimination Schemes.
 
@@ -54,6 +54,7 @@ Inductive eval_term {gamma} : raw_term Sig gamma -> raw_term Sig gamma -> Type :
   Definition eval_term_rect := eval_ind.
 
 
+(* Inversion lemmas for computation rules *)
 
 Lemma eval_canon_tm (c : raw_term Sig 0%nat) g:
   eval_term c g -> (g = star_term) + (exists a b, g = pair_term a b) + (exists a A, g = eq_term A a) + (exists a, g = class_term a).
@@ -79,6 +80,8 @@ Proof.
   - right. exists A. reflexivity.
 Defined.
 
+
+(* Definition of computable judgement *)
 
 Inductive computable : judgement Sig -> Type :=
   | ty_comp A : derivable [! [: :] |- A !] ->
@@ -144,21 +147,21 @@ Inductive computable : judgement Sig -> Type :=
   Scheme computable_rec := Minimality for computable Sort Type.
   Definition computable_rect := computable_ind.
 
+
+
+(* Technical inversion lemmas: we should have these for free, so most of the proofs are omitted *)
+
 Lemma inversion_lemma_deriv J : 
   computable J -> derivable J.
 Proof.
   intros; destruct X; easy.
 Defined.
 
-
-
 Lemma inversion_lemma_ty_eval A : 
 computable [! [: :] |- A !] -> (exists G, 
                                 eval_type A G).
-                                Proof.
-                                Admitted.
-
-
+Proof.
+Admitted.
 
 Lemma inversion_lemma_ty_correct_eval A : 
 computable [! [: :] |- A !] -> (exists G,
@@ -166,7 +169,6 @@ computable [! [: :] |- A !] -> (exists G,
 Proof.
 Admitted.
                                 
-
 Lemma inversion_lemma_ty_parts A : 
   computable [! [: :] |- A !] -> (exists G, 
                                   ((exists A1 A2, G = Sigma_type A1 A2 /\ computable [! [: :] |- A1 !] /\ computable [! [: A1 :] |- A2 !]) +
@@ -174,7 +176,6 @@ Lemma inversion_lemma_ty_parts A :
                                   (exists C, G = Qtr_type C /\ computable [! [: :] |- C !]))).
 Proof.
 Admitted.
-
 
 Lemma inversion_lemma_ty_eq_assoc A B :
   computable [! [: :] |- A ≡ B !] ->
@@ -214,34 +215,56 @@ Admitted.
 
 Lemma inversion_tm_eq_assoc a b A :  
 computable [! [: :] |- a ≡ b ; A !] ->
-(computable [! [: :] |- a ; A !] /\ computable [! [: :] |- b ; A !]).
+                                      (computable [! [: :] |- a ; A !] /\ computable [! [: :] |- b ; A !]).
 Proof.
 Admitted.
 
 Lemma inversion_tm_eq_parts a b A :  
 computable [! [: :] |- a ≡ b ; A !] ->
-(exists G ga gb, 
-eval_type A G /\ eval_term a ga /\ eval_term b gb /\
-((G = Terminal_type /\ ga = star_term /\ gb = star_term) +
-(exists A1 A2 a1 a2 b1 b2, (G = Sigma_type A1 A2 /\ ga = pair_term a1 a2 /\ gb = pair_term b1 b2) /\ computable [! [: :] |- a1 ≡ b1 ; A1 !] /\ computable [! [: :] |- a2 ≡ b2 ; substitute (fun _ => a1) A2 !]) +
-(exists A1 b c d f, (G = Eq_type A1 c d /\ ga = eq_term A1 b /\ gb = eq_term A1 f) /\ computable [! [: :] |- c ≡ d ; A1 !])) +
-(exists C c1 c2, (G = Qtr_type C /\ ga = class_term c1 /\ gb = class_term c2) /\ computable [! [: :] |- c1 ; C !] /\ computable [! [: :] |- c2 ; C !])).
+                                      (exists G ga gb, 
+                                      eval_type A G /\ eval_term a ga /\ eval_term b gb /\
+                                      ((G = Terminal_type /\ ga = star_term /\ gb = star_term) +
+                                      (exists A1 A2 a1 a2 b1 b2, (G = Sigma_type A1 A2 /\ ga = pair_term a1 a2 /\ gb = pair_term b1 b2) /\ computable [! [: :] |- a1 ≡ b1 ; A1 !] /\ computable [! [: :] |- a2 ≡ b2 ; substitute (fun _ => a1) A2 !]) +
+                                      (exists A1 b c d f, (G = Eq_type A1 c d /\ ga = eq_term A1 b /\ gb = eq_term A1 f) /\ computable [! [: :] |- c ≡ d ; A1 !])) +
+                                      (exists C c1 c2, (G = Qtr_type C /\ ga = class_term c1 /\ gb = class_term c2) /\ computable [! [: :] |- c1 ; C !] /\ computable [! [: :] |- c2 ; C !])).
+Proof.
+Admitted.
+
+Lemma inversion_lemma_ty_ass : 
+  forall Gamma B, computable [! Gamma |- B !] -> derivable [! Gamma |- B !] /\ 
+                                                (forall s : raw_substitution Sig 0%nat Gamma, computable [! [: :] |- substitute s B !]).
+Proof.
+Admitted.
+
+Lemma inversion_lemma_ty_eq_ass : 
+forall Gamma B D, computable [! Gamma |- B ≡ D !] ->
+                                                    derivable [! Gamma |- B ≡ D !] /\
+                                                    computable [! Gamma |- B !] /\
+                                                    (forall s : raw_substitution Sig 0%nat Gamma, computable [! [: :] |- substitute s B ≡ substitute s D  !]).
 Proof.
 Admitted.
 
 
-Axiom inversion_lemma_ty_ass : 
-  forall Gamma B, computable [! Gamma |- B !] -> derivable [! Gamma |- B !] /\ 
-                                                (forall s : raw_substitution Sig 0%nat Gamma, computable [! [: :] |- substitute s B !]).
 
-Axiom inversion_lemma_ty_eq_ass : 
-forall Gamma B D, computable [! Gamma |- B ≡ D !] ->
-                                                derivable [! Gamma |- B ≡ D !] /\
-                          computable [! Gamma |- B !] /\
-                          (forall s : raw_substitution Sig 0%nat Gamma, computable [! [: :] |- substitute s B ≡ substitute s D  !]).
+(* Preservation of computability of (some) logical rules *)
 
 Lemma refl_tm_computable_empty_context a A:
   computable [![::] |- a ; A!] -> computable [![::] |- a ≡ a ; A!].
+Proof.
+Admitted.
+
+Lemma assumption_equal_types A B F:
+  computable [! [::] |- A ≡ B !] -> (computable (Build_judgement [:A:] F) <-> computable (Build_judgement [:B:] F)).
+Proof.
+Admitted.
+
+Lemma associate_ty_judgement Gamma A B :
+  computable [! Gamma |- A ≡ B !] -> computable [! Gamma |- B !].
+Proof.
+Admitted.
+
+Lemma elements_equal_types a A B :
+  computable [! [::] |- A ≡ B !] -> (computable [! [: :] |- a ; A !] <-> computable [! [::] |- a ; B !]).
 Proof.
 Admitted.
 
@@ -311,15 +334,7 @@ Proof.
     - left. left. right. exists B. exists C. repeat split; easy.
 Defined.
 
-Lemma assumption_equal_types A B F:
-  computable [! [::] |- A ≡ B !] -> (computable (Build_judgement [:A:] F) <-> computable (Build_judgement [:B:] F)).
-Proof.
-Admitted.
 
-Lemma associate_ty_judgement Gamma A B :
-  computable [! Gamma |- A ≡ B !] -> computable [! Gamma |- B !].
-Proof.
-Admitted.
 
 Lemma F_Sigma_eq_computable_empty_context B C D E :
   computable [! [::] |- B ≡ D !] -> computable [! [: B :] |- C ≡ E !] -> computable [! [::] |- Sigma_type B C ≡ Sigma_type D E !].
@@ -389,10 +404,7 @@ Proof.
     - left. right. exists C. exists c. exists d. repeat split; easy.
 Defined.
 
-Lemma elements_equal_types a A B :
-  computable [! [::] |- A ≡ B !] -> (computable [! [: :] |- a ; A !] <-> computable [! [::] |- a ; B !]).
-Proof.
-Admitted.
+
 
 Lemma F_Eq_eq_computable_empty_context c d e f C E :
   computable [! [::] |- C ≡ E !] -> computable [! [: :] |- c ≡ e ; C !] -> computable [! [::] |- d ≡ f ; C !] -> computable [! [::] |- Eq_type C c d ≡ Eq_type E e f !].
