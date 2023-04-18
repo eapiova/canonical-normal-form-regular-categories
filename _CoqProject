@@ -37,4 +37,4 @@ GeneralTT/Metatheorem/Elimination.v
 GeneralTT/Metatheorem/Presuppositions.v
 GeneralTT/Metatheorem/Acceptability.v
 GeneralTT/Example/ScopeSystemExamples.v
-Theory.v
+TypeTheory.v

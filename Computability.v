@@ -20,7 +20,7 @@ From GeneralTT Require Import Metatheorem.Presuppositions.
 From GeneralTT Require Import Metatheorem.Acceptability.
 From GeneralTT Require Import Example.ScopeSystemExamples.
 Require Setoid.
-From GeneralTT Require Import Theory.
+From GeneralTT Require Import TypeTheory.
 
 
 
