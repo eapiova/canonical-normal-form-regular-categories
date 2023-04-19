@@ -37,4 +37,5 @@ GeneralTT/Metatheorem/Elimination.v
 GeneralTT/Metatheorem/Presuppositions.v
 GeneralTT/Metatheorem/Acceptability.v
 GeneralTT/Example/ScopeSystemExamples.v
-TypeTheory.v
+RegularCategories/DependentTypeTheory.v
+RegularCategories/Computability.v
