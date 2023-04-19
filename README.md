@@ -34,6 +34,11 @@ $ make -f CoqMakefile
 
 # Contents
 
+DependentTypeTheory.v contains the definition of the type theory of regular categories: signature, types and logical rules.
+
+Computability.v contains the computation rules, the definition of computable judgement and proofs of preservation of computability for (some) logical rules in case of empty context.
+
+
 
 
 
