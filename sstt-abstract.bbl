@@ -1,0 +1,142 @@
+% $ biblatex auxiliary file $
+% $ biblatex bbl format version 3.3 $
+% Do not modify the above lines!
+%
+% This is an auxiliary file used by the 'biblatex' package.
+% This file may safely be deleted. It will be recreated by
+% biber as required.
+%
+\begingroup
+\makeatletter
+\@ifundefined{ver@biblatex.sty}
+  {\@latex@error
+     {Missing 'biblatex' package}
+     {The bibliography requires the 'biblatex' package.}
+      \aftergroup\endinput}
+  {}
+\endgroup
+
+
+\refsection{0}
+  \datalist[entry]{anyt/global//global/global/global}
+    \entry{borsetto2023}{thesis}{}{}
+      \name{author}{1}{}{%
+        {{hash=751c930fe16188830a75aa3d658b95d3}{%
+           family={Borsetto},
+           familyi={B\bibinitperiod},
+           given={Riccardo},
+           giveni={R\bibinitperiod}}}%
+      }
+      \list{institution}{1}{%
+        {University of Padova}%
+      }
+      \strng{namehash}{751c930fe16188830a75aa3d658b95d3}
+      \strng{fullhash}{751c930fe16188830a75aa3d658b95d3}
+      \strng{fullhashraw}{751c930fe16188830a75aa3d658b95d3}
+      \strng{bibnamehash}{751c930fe16188830a75aa3d658b95d3}
+      \strng{authorbibnamehash}{751c930fe16188830a75aa3d658b95d3}
+      \strng{authornamehash}{751c930fe16188830a75aa3d658b95d3}
+      \strng{authorfullhash}{751c930fe16188830a75aa3d658b95d3}
+      \strng{authorfullhashraw}{751c930fe16188830a75aa3d658b95d3}
+      \field{extraname}{1}
+      \field{labelalpha}{Bor23}
+      \field{sortinit}{B}
+      \field{sortinithash}{d7095fff47cda75ca2589920aae98399}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{A canonical normal form theorem for the type theory of regular categories}
+      \field{type}{mathesis}
+      \field{year}{2023}
+    \endentry
+    \entry{regcat2026}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=751c930fe16188830a75aa3d658b95d3}{%
+           family={Borsetto},
+           familyi={B\bibinitperiod},
+           given={Riccardo},
+           giveni={R\bibinitperiod}}}%
+      }
+      \strng{namehash}{751c930fe16188830a75aa3d658b95d3}
+      \strng{fullhash}{751c930fe16188830a75aa3d658b95d3}
+      \strng{fullhashraw}{751c930fe16188830a75aa3d658b95d3}
+      \strng{bibnamehash}{751c930fe16188830a75aa3d658b95d3}
+      \strng{authorbibnamehash}{751c930fe16188830a75aa3d658b95d3}
+      \strng{authornamehash}{751c930fe16188830a75aa3d658b95d3}
+      \strng{authorfullhash}{751c930fe16188830a75aa3d658b95d3}
+      \strng{authorfullhashraw}{751c930fe16188830a75aa3d658b95d3}
+      \field{extraname}{2}
+      \field{labelalpha}{Bor26}
+      \field{sortinit}{B}
+      \field{sortinithash}{d7095fff47cda75ca2589920aae98399}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{A canonical normal form theorem for the type theory of regular categories in {Cubical} {Agda}}
+      \field{year}{2026}
+      \verb{urlraw}
+      \verb https://github.com/eapiova/regcat-normal-form
+      \endverb
+      \verb{url}
+      \verb https://github.com/eapiova/regcat-normal-form
+      \endverb
+    \endentry
+    \entry{maietti2005}{article}{}{}
+      \name{author}{1}{}{%
+        {{hash=2511b7e3a059efc6281a4d6d36d8f75a}{%
+           family={Maietti},
+           familyi={M\bibinitperiod},
+           given={Maria\bibnamedelima Emilia},
+           giveni={M\bibinitperiod\bibinitdelim E\bibinitperiod}}}%
+      }
+      \strng{namehash}{2511b7e3a059efc6281a4d6d36d8f75a}
+      \strng{fullhash}{2511b7e3a059efc6281a4d6d36d8f75a}
+      \strng{fullhashraw}{2511b7e3a059efc6281a4d6d36d8f75a}
+      \strng{bibnamehash}{2511b7e3a059efc6281a4d6d36d8f75a}
+      \strng{authorbibnamehash}{2511b7e3a059efc6281a4d6d36d8f75a}
+      \strng{authornamehash}{2511b7e3a059efc6281a4d6d36d8f75a}
+      \strng{authorfullhash}{2511b7e3a059efc6281a4d6d36d8f75a}
+      \strng{authorfullhashraw}{2511b7e3a059efc6281a4d6d36d8f75a}
+      \field{labelalpha}{Mai05}
+      \field{sortinit}{M}
+      \field{sortinithash}{4625c616857f13d17ce56f7d4f97d451}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Mathematical Structures in Computer Science}
+      \field{number}{6}
+      \field{title}{Modular correspondence between dependent type theories and categories including pretopoi and topoi}
+      \field{volume}{15}
+      \field{year}{2005}
+      \field{pages}{1089\bibrangedash 1149}
+      \range{pages}{61}
+    \endentry
+    \entry{valentini2000}{thesis}{}{}
+      \name{author}{1}{}{%
+        {{hash=3816a66ca24e59a801da8f815caecf0f}{%
+           family={Valentini},
+           familyi={V\bibinitperiod},
+           given={Silvio},
+           giveni={S\bibinitperiod}}}%
+      }
+      \list{institution}{1}{%
+        {Katholieke Universiteit Nijmegen}%
+      }
+      \strng{namehash}{3816a66ca24e59a801da8f815caecf0f}
+      \strng{fullhash}{3816a66ca24e59a801da8f815caecf0f}
+      \strng{fullhashraw}{3816a66ca24e59a801da8f815caecf0f}
+      \strng{bibnamehash}{3816a66ca24e59a801da8f815caecf0f}
+      \strng{authorbibnamehash}{3816a66ca24e59a801da8f815caecf0f}
+      \strng{authornamehash}{3816a66ca24e59a801da8f815caecf0f}
+      \strng{authorfullhash}{3816a66ca24e59a801da8f815caecf0f}
+      \strng{authorfullhashraw}{3816a66ca24e59a801da8f815caecf0f}
+      \field{labelalpha}{Val00}
+      \field{sortinit}{V}
+      \field{sortinithash}{afb52128e5b4dc4b843768c0113d673b}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Meta-mathematical aspects of {Martin-Löf's} type theory}
+      \field{type}{phdthesis}
+      \field{year}{2000}
+    \endentry
+  \enddatalist
+\endrefsection
+\endinput
+

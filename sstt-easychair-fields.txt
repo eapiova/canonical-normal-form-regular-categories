@@ -1,0 +1,18 @@
+Title
+A canonical normal form theorem for the type theory of regular categories
+
+Abstract
+Various categorical structures enjoy internal languages formulated as extensional dependent type theories a la Martin-Lof, where universal categorical properties correspond modularly to type constructors (Maietti 2005). This correspondence covers a hierarchy from lex categories through regular categories and pretopoi up to topoi, and provides a framework for analyzing the computational content of these languages.
+
+A regular category, a finitely complete category with stable images, has an internal type theory built from the terminal type, indexed sum types, extensional equality types, and quotient types on the terminal type, corresponding to stable quotients of kernel pairs. We prove a canonical normal form theorem for this type theory: every closed derivable judgement reduces to one in canonical form. Closed types evaluate to a terminal, dependent sum, equality, or quotient type, and closed terms to the corresponding introductory form (star, pair, reflexivity, or equivalence class). This yields the standard consequences of canonicity, in particular consistency, and provides a computation model that can serve as the basis for a proof assistant for the theory.
+
+The proof uses computability predicates, originating with Tait (1967) for simple types and adapted to Martin-Lof's type theory by Nordstrom, Petersson, and Smith (1990). Building on a suggestion by Nordstrom, Valentini (2000) gave a complete proof of the canonical form theorem for full extensional Martin-Lof type theory. We adapt Valentini's argument to our setting. The main novelty lies in the treatment of the quotient type on the terminal type, which is specific to regular categories and has no counterpart in Valentini's proof. We define a computability predicate on judgements that records both a derivation and an evaluation to canonical form; the core of the proof consists in showing that all logical rules, including formation, introduction, elimination, and computation for the quotient type, preserve computability.
+
+We previously gave a partial formalization in Coq (Rocq) covering the computability argument for the empty context case (Borsetto 2023). We extend this to a complete formalization in Cubical Agda (Borsetto 2026). As future work, we plan to investigate whether the canonical normal form argument can be extended along the modular hierarchy, from regular categories through pretopoi up to topoi.
+
+Keywords
+canonical normal form
+extensional type theory
+regular categories
+computability predicates
+Cubical Agda
