@@ -1,0 +1,21 @@
+\documentclass{sstt-2026-abstract}
+
+\addbibresource{sstt-abstract.bib}
+
+\abstracttitle{A canonical normal form theorem for the type theory of regular categories}
+
+\abstractspeaker{Riccardo Borsetto}
+
+\begin{document}
+
+Various categorical structures enjoy internal languages formulated as extensional dependent type theories à la Martin-L\"of, where universal categorical properties are mapped to type constructors \cite{maietti2005}. This correspondence covers a hierarchy from lex categories through regular categories and pretopoi up to topoi.
+
+A regular category, a finitely complete category with stable images, has an internal type theory built from the terminal type, dependent sum, extensional equality, and quotient on the terminal type, corresponding to stable quotients of kernel pairs. We prove a canonical normal form theorem for this type theory: every closed derivable judgement reduces to one in canonical form. Closed types evaluate to a terminal, dependent sum, equality, or quotient type, and closed terms to the corresponding introductory form. This gives the standard consequences of canonicity, in particular consistency.
+
+The proof uses computability predicates, originating with Tait (1967) and adapted to Martin-L\"of's type theory by Nordstr\"om, Petersson, and Smith (1990). Then, Valentini \cite{valentini2000} proved the canonical form theorem for full extensional Martin-L\"of type theory. We adapt Valentini's argument to our setting: the main result is the treatment of the quotients, which has no counterpart in \cite{valentini2000}. We define a computability predicate on judgements that records both a derivation and an evaluation to canonical form, and show that all logical rules, including those for the quotient type, preserve computability.
+
+We previously gave a partial formalisation in Coq covering the empty context case \cite{borsetto2023}, and we extend it here to a complete one in Cubical Agda \cite{regcat2026}. As future work, we plan to investigate whether the argument extends along the modular hierarchy up to topoi.
+
+\printbibliography
+
+\end{document}

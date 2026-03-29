@@ -1,0 +1,45 @@
+\documentclass{sstt-2026-abstract}
+%% The class already loads standard commonly-used packages:
+%% amsmath, hyperref, biblatex, tikz-cd, etc.
+%%
+%% To help us preparing a book of abstracts, please avoid loading further
+%% packages unless absolutely essential.
+
+\addbibresource{sstt-example.bib}
+
+%%%%%%%%%%%%%%%%
+%% Extra commands, theorem types (\newtheorem), etc
+%% Please keep simple and use sparingly
+
+%%%%%%%%%%%%%%%%
+%% Abstract metadata
+%% These replace the usual \title, \author commands
+
+\abstracttitle{Some theorems on type theories}
+
+\abstractspeaker{Alice Speaker} % speaker
+\abstractcoauthor{Bob Coauthor} % coauthor(s)/collaborator(s) as needed
+% \abstractcoauthor{Charlie Third}
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%
+%% Abstract main text
+
+Abstract text to follow here. Abstracts should be concise: maximum 1 page, including any references.
+
+In this talk we will demonstrate:
+
+\begin{theorem*}
+  Every type theory is normalising, canonical, and conservative.
+\end{theorem*}
+
+We will make use of techniques including algebra, coalgebra, rewriting, gluing, reflection, refraction, and continuity principles \cite{martin-lof:bibliopolis,cartmell:generalised-algebraic-theories}
+
+\lipsum[3-4]
+
+%%%%%%%%%%%%%%%%
+%% Bibliography, if needed:
+\printbibliography
+
+\end{document}
