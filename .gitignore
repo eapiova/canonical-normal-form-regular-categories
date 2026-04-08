@@ -16,3 +16,4 @@ CoqMakefile
 CoqMakefile.conf
 TESI_FINALE.pdf
 presentazione
+_build/
