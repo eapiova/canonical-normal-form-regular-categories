@@ -1,669 +1,260 @@
-# Plan: Eliminate TERMINATING from CompTheorem.agda — v13
+# Plan: Eliminate `TERMINATING` from `CompTheorem.agda` — v28 (Stage 2 revision)
+
+## Summary — what needs to change vs v27
+
+v27 recommended Option (c): rewrite combinators (`compFSigmaClosed`, `compCSigmaClosed`, …) to take `Derivable` + `Acc _<_ (substTaskMeasure dm)` instead of `HypComputable`. Stage 1 landed clean. **Stage 2 reverted** because wrapping `dm` via `substTmRule dm outerFits` increases `derivSize`, so the sub-Acc lemma `substMeasure-cSigma-m<` no longer bounds the resulting derivation.
+
+**v28 refinement** — Stage 2 uses the "pre-computed Computable body" alternative (already noted as the fallback in v27's Stage 2 post-mortem): the combinator accepts a `Computable n (hasTy (B ∷ A ∷ []) m (subTy (liftSubst (liftSubst idSubst)) M))`-shaped body rather than raw `dm` + Acc. The substitution-composition plumbing moves to the CALLER (SCC 2 case body), where an `Acc` on the outer derivation IS available and sub-Acc threading can produce the body Computable by a direct `substDerivTmCompCF` call. **This does not grow scope at the combinator level**, but requires ~1 additional day for path-arithmetic at the ~6 SCC 2 call sites (cSigma / cQtr across `substDerivTmEqCompCF` and `eqSubDerivTmEqCompCF`).
+
+Lexicographic `(tyDepth outputType, derivSize d)` measures were considered (Plan-agent Option C/B) and **rejected** for Stage 2's specific need: `substTmRule dm` preserves output-type depth (by `tyDepth-subTy`) but increases derivSize, so lex first coord is `=` and second is `↑` — lex increases, not decreases.
+
+Other stages of v27 (3, 4, 5, 6) stand unchanged. Plan-B fallback (narrow TERMINATING on a post-SCC-2 layer of ~800 LoC) remains the safety net if Stage 5 reveals a hidden cycle.
+
+## Current status — what landed this session
+
+- **Stage 0 (audit + baseline)**: complete.
+- **Stage 1 (`compFSigmaClosed` trivial rewrite)**: complete, typechecks, `agda src/TReg/Everything.agda` passes. `compFSigmaClosed` now takes `Derivable (isType (A ∷ []) B)` directly instead of `HypComputable (suc n)`; 10 call sites updated to pass `hypCompToDerivable …`.
+- **New Measure.agda lemmas**: added `substMeasure-cSigma-m<`, `substMeasure-cSigma-M<`, `substMeasure-cQtr-l<`, `substMeasure-cQtr-L<` (four decrease lemmas useful for future stages).
+- **Stage 2 (`compCSigmaClosed` / `compCQtrClosed`) attempted and reverted**: the interface change to take `(dm : Derivable …) + Acc` fails because the caller cannot pass the raw outer `dm_orig` (at context `(B_orig ∷ A_orig ∷ gamma)`) into a signature requiring a substituted `dm` (at context `(B_sub ∷ A_sub ∷ [])`). Wrapping via `substTmRule dm_orig <2-binder lift of sigma>` produces the right TYPE but `derivSize (substTmRule dm fits) > derivSize dm`, so the `substMeasure-cSigma-m<` sub-Acc no longer bounds the new derivation. The alternative — passing the pre-computed body `Computable` directly — works for compCSigmaClosed's body but pushes the substitution-composition plumbing onto the caller (SCC 2 case body), which then needs a non-trivial `compSub (sigmaCompSub …) (liftSubst (liftSubst sigma))` construction and associated path arithmetic. **This is much larger than the 1-day estimate.**
+- `agda src/TReg/Everything.agda` currently passes with `{-# TERMINATING #-}` still in place (post-revert state).
 
 ## Context
 
-CompTheorem.agda has `{-# TERMINATING #-}` on a mutual block. The goal is to remove it and make all modules `--safe`. **v11** rolled back to wrapper records for open Computable constructors and separated Acc workers from the main mutual block.
+Phase A+B+C is complete: `substTaskMeasure d = derivSize d` (in [Measure.agda](src/TReg/Measure.agda)), ~30 per-constructor decrease lemmas, and every **direct-recursive** `<-wellfounded _` call site in the eight SCC 2 workers (`substDerivT*CompCF` / `eqSubDerivT*CompCF`) now uses `(acc rs)` + `rs _ (substMeasure-*<)` sub-Acc threading. `agda src/TReg/Everything.agda` builds clean with `{-# TERMINATING #-}` still in place on the main mutual block.
 
-The current SCC with `computableTheorem dt` at [line 678](src/TReg/CompTheorem.agda#L678) is just `{fitsToCompFits, computableTheorem}`. But applying the naive v12 fix (replace with `substDerivTmComp ... idSubst`) exposes a larger SCC: `{fitsToCompFits, substDerivTyComp, substDerivTmComp, openCompTy, computeWeakenTy, computableTheorem}`, with edges at [line 1961](src/TReg/CompTheorem.agda#L1961), [line 4008](src/TReg/CompTheorem.agda#L4008), and [line 4890](src/TReg/CompTheorem.agda#L4890). The `fitsToCompFits` rewrite only works AFTER two prerequisite decouplings.
+With `TERMINATING` removed, Agda reports termination failures in exactly **4 functions** in one SCC:
+```
+substDerivTyCompCF, substDerivTmCompCF, mkHypComputableTy, sigmaTyFamHypClosed
+```
+Two architectural blockers survive:
+
+1. **Closure-capture** ([CompTheorem.agda:6530-6535](src/TReg/CompTheorem.agda#L6530-L6535)) — `mkHypComputableTy d` builds `hypTyOpen` whose closure body captures `d` and calls `substDerivTyCompCF d fits cFits (<-wellfounded _)`. SCT sees no strict decrease.
+2. **Closure-extraction** ([CompTheorem.agda:7266-7271](src/TReg/CompTheorem.agda#L7266-L7271)) — `sigmaTyFamHypClosed (compTyClosedSigma _ _ _ _ dB) = mkHypComputableTy nonemptyNeNil dB`. The extracted `dB` has no SCT relationship to any caller's Acc.
+
+Options (a) (Phase D — Acc field on `hyp*Open`) and (b1) (store Acc alongside raw `Derivable` in `Computable`) are both **structurally dead**: SCT requires strict decrease in the recursive call, but the closure body uses the SAME `d` unchanged, and no amount of Acc threading can manufacture a decrease where none exists.
+
+The user wants a decision between (b2) and (c).
 
 ---
 
-## Three blockers and their resolutions
+## The b2 vs c comparison
 
-### Blocker 1: Closure cycle (openCompTy calls computableTheorem)
+### Option (b2) — Make `HypComputable` an inductive data type mirroring type/term structure
 
-**Problem**: `openCompTy d` builds `compTyOpen ... (λ sigma fits → computableTheorem (substTyRule d fits))`. The closure calls `computableTheorem` on `substTyRule d fits` which is NOT a sub-derivation of `d`.
-
-**Resolution**: SCC 2 — a separate family of functions (`substDerivTyComp` etc.) that do structural recursion on the derivation and never call `computableTheorem`. Closures call SCC 2 instead.
-
-### Blocker 2: Partial substitution gap (open premises for closed builders)
-
-**Problem**: Closed builders like `compFSigmaClosed` take `Computable (isType (A ∷ []) B)` (OPEN). SCC 2 can only produce `Computable (isType [] ...)` (CLOSED).
-
-**Resolution**: **openWrap** — directly construct open Computable values by wrapping derivations in `compTyOpen`/`compTmOpen` with closures delegating to SCC 2:
-
+Define `HypTy`/`HypTm`/`HypTyEq`/`HypTmEq` inductively, e.g.
 ```agda
-openWrapTy : Derivable (isType (B ∷ gamma) A) → Computable (isType (B ∷ gamma) A)
-openWrapTy d = compTyOpen nonemptyNeNil d
-  (λ sigma fits → substDerivTyComp d fits (fitsToCompFits fits))
-  (λ sigma tau fitsEq → eqSubDerivTyComp d fitsEq (fitsEqToCompFitsEq fitsEq))
+data HypTy (n : ℕ) : Ctx → RawType → Type where
+  hypTop   : HypTy n Γ tyTop
+  hypSigma : HypTy n Γ A → HypTy n (A ∷ Γ) B → HypTy n Γ (tySigma A B)
+  hypEq    : HypTy n Γ A → HypTm n Γ a A → HypTm n Γ b A → HypTy n Γ (tyEq A a b)
+  hypQtr   : HypTy n Γ A → HypTy n Γ (tyQtr A)
 ```
+Building a `HypTy` is structural recursion on the derivation; applying a substitution is structural recursion on the `HypTy`. No cycle.
 
-Example fix: `computableTheorem (fSigma {gamma = []} dA dB)` currently calls `compFSigmaClosed (computableTheorem dA) (computableTheorem dB)`. In v6: `compFSigmaClosed (computableTheorem dA) (openWrapTy dB)`.
+**Fundamental obstacle:** derivations in T*reg are **not in canonical type form**. They can be wrapped in `reflTy`, `symTy`, `transTy`, `weakenTyEq`, `substTyRule`, `substTyEqRule`, `eqSubTyRule`, `conv`, etc. — rules that have no counterpart in a type-indexed inductive `HypTy`. To define a structural translation `Derivable → HypTy`, every such derivation constructor must be handled, which means either:
+- adding an "uninterpreted" constructor to `HypTy` that stores a raw `Derivable` (re-introducing the closure-escape problem), or
+- first canonicalizing the derivation into a `HypTy`-compatible shape, which itself needs its own termination argument.
 
-### Blocker 3: compSymTyClosed/compTransTyClosed non-structural recursion on Computable children
+**Scope:** new data types (`HypTy`, `HypTm`, `HypTyEq`, `HypTmEq`), a translation `Derivable → Hyp*`, a substitution-application `Hyp* → Computable`, rewrites of every HypComputable consumer. Estimated **2000–3000 LoC**, multi-week effort. Breaks the current level-split invariant and requires re-establishing semantic equivalence with the old `HypComputable`.
 
-**Problem**: `compSymTyClosed` (Sigma case, [CompTheorem.agda:625-634](src/TReg/CompTheorem.agda#L625)) recurses on `compCE` (structurally smaller ✓) but also calls `compSymTy (compTransportFamilyTyEq compCE compDF)` — a freshly constructed value, NOT structurally smaller. Similarly `compTransTyClosed` (Sigma case, [CompTheorem.agda:686-702](src/TReg/CompTheorem.agda#L686)) calls `compTransTyClosed compCE sigmaTyEqCompHead` and `compTransTy compDF compFH` where `compFH` is freshly constructed.
+**Verdict:** theoretically viable but unreasonably large, and the non-canonical-derivation problem is not cleanly solved — it is relocated.
 
-**Resolution**: `Acc`-based internal workers indexed by `tyDepth` of the evaluated left type.
+### Option (c) — Rewrite combinator interfaces to take raw `Derivable` + `Acc`
 
-**DONE** — already implemented at [CompTheorem.agda#L715-L890](src/TReg/CompTheorem.agda#L715). Uses `closedTaskMeasure` from [Structural.agda](src/TReg/Structural.agda) (same measure used by `compConvTmClosedAcc`). Acc witnesses use `tyDepth-fst<Sigma`, `tyDepth-snd<Sigma`, `tyDepth-base<Eq`, `tyDepth-base<Qtr` from [Measure.agda](src/TReg/Measure.agda). Wrappers `compSymTyClosed`/`compTransTyClosed` at lines 879-890 live inside the mutual block (fine — they just call `<-wellfounded` from the library).
+The current SCC 2 case bodies use `HypComputable` as an indirection to re-enter SCC 2 at a fresh `<-wellfounded _`. The insight: at every such site we already have (or can obtain) the raw derivation, and an `Acc` witness can be threaded from the outer case's `(acc rs)` via a standard sub-Acc lemma.
+
+Rewrite the combinators (`compFSigmaClosed`, `compCSigmaClosed`, `compESigmaClosed`, `compCQtrClosed`, `compEQtrClosed`) to take **`Derivable` + `Acc` instead of `HypComputable`**, and have them call the SCC 2 worker directly (`substDerivT*CompCF` / `eqSubDerivT*CompCF`) with the sub-Acc. This extends the Phase C Acc-threading technique across the combinator boundary.
+
+After the rewrite, the `mkHypComputable*` / `sigmaTyFamHypClosed` / `openHypTm*` / `sigmaBranchTyHypFromMotive` / `hyp*Right` / `compTransTm` / `compSymTm` / `weakenOneOpen*` family is **no longer called from inside the SCC 2 mutual block**. It moves to a post-SCC-2 layer at the bottom of [CompTheorem.agda](src/TReg/CompTheorem.agda) and is called only by external consumers (Structural.agda). In that post-SCC-2 layer SCT accepts the closures as data, so no `TERMINATING` is needed there either.
+
+**Scope:** 5–8 days, ~1500 LoC touched, **no new data types**, no new invariants.
+
+**Key empirical findings that narrow the scope** (from Explore agents + targeted reads):
+- `compFSigmaClosed` at [CompTheorem.agda:582-592](src/TReg/CompTheorem.agda#L582-L592) pattern-binds `subB subEqB` but **never uses them** — it only stores `dB`. Trivial rewrite.
+- `compF/I/C/E EqClosed` live in [EqComp.agda](src/TReg/EqComp.agda) (not CompTheorem) and don't take HypComputable at all — the tyEq branches have no binder motive.
+- Only `sigmaTyFamHypClosed` exists — no `qtrTyFamHypClosed` / `eqTyFamHypClosed`. The qtr path hand-builds `hypTyOpen` closures directly in case bodies ([CompTheorem.agda:3154-3226](src/TReg/CompTheorem.agda#L3154-L3226)), which means Stage 4 replaces those call sites directly without an intermediate extractor.
+- The `compM` motive in `compESigmaClosed` is consumed by `compSingleEqSubstTyClosed compM compLeftCorrSym` ([CompTheorem.agda:848](src/TReg/CompTheorem.agda#L848)), a Structural.agda helper taking HypComputable. Stage 4b introduces `...Raw` variants that take raw `Derivable` + `Acc`.
+
+### Recommendation: **Option (c)**.
+
+Less risky than (b2) (no new data types, no new invariants), 3–4× smaller scope, builds on the proven Phase C technique, and has a **narrow-TERMINATING fallback** at Stage 5 that is itself a major improvement over the status quo.
 
 ---
 
-## Detailed architecture
+## Staged plan for Option (c)
 
-### SCC 2: substDerivXxxComp functions
+Each stage ends with an `agda` gate. If a stage fails, rollback is trivial (revert the stage's files) and the project remains at the prior stage's state. Stages 1–2 are independent enough to land as separate PRs.
 
-#### Exact constructor coverage per judgment form
+### Stage 0 — Audit & Baseline *(0.5 day)*
+- Document every HypComputable producer/consumer in [CompTheorem.agda](src/TReg/CompTheorem.agda) with file:line references (see `Key sites` section below).
+- Verify the full list of decrease lemmas in [Measure.agda](src/TReg/Measure.agda) and note which per-constructor lemmas are missing (at least `substMeasure-cSigma-m<`, `substMeasure-cQtr-l<`, `substMeasure-eSigmaEq-dmm<`, `substMeasure-eQtrEq-dll<`, `substMeasure-eQtrEq-dcoh<`, `substMeasure-eQtrEq-dcoh'<` are candidates).
+- **Gate:** `agda src/TReg/Everything.agda` baseline still passes. **Rollback:** trivial.
 
-**`substDerivTyComp`** handles `Derivable (isType gamma A)`:
-- `fTop wf` — Top-specific
-- `fSigma dA dB` — Sigma-specific
-- `fEq dA da db` — Eq-specific
-- `fQtr dA` — Qtr-specific
-- `weakenTy d wf` — structural
-- `substTyRule d fits'` — structural
+### Stage 1 — Trivial combinator rewrite: `compFSigmaClosed` *(0.5 day)*
+- Change `compFSigmaClosed`'s signature to take `Derivable (isType (A ∷ []) B)` instead of `HypComputable`. Body shrinks from 7 lines to 4.
+- Update the handful of callers in SCC 2 case bodies and in `sigmaBranchTyHypFromMotive` at [CompTheorem.agda:7119,7209](src/TReg/CompTheorem.agda#L7119) to pass raw `dB` directly.
+- **Gate:** `agda src/TReg/CompTheorem.agda` clean, TERMINATING still present. **Rollback:** revert.
 
-**`substDerivTyEqComp`** handles `Derivable (typeEq gamma A B)`:
-- `reflTy d` — structural
-- `symTy d` — structural
-- `transTy d₁ d₂` — structural
-- `fSigmaEq dAC dBD` — Sigma-specific
-- `fEqEq dAC dac dbd` — Eq-specific
-- `fQtrEq dAB` — Qtr-specific
-- `weakenTyEq d wf` — structural
-- `substTyEqRule d fits'` — structural
-- `eqSubTyRule d fitsEq'` — structural (produces typeEq)
-- `eqSubTyEqRule d fitsEq'` — structural (produces typeEq)
+### Stage 2 — Computation-rule rewrites: `compCSigmaClosed`, `compCQtrClosed` *(1.5-2 days — revised from v27)*
 
-**`substDerivTmComp`** handles `Derivable (hasTy gamma t A)`:
-- `varStar wf dA` — variable lookup
-- `iTop wf` — Top-specific
-- `iSigma da db dSigma` — Sigma-specific
-- `iEq da` — Eq-specific
-- `iQtr da` — Qtr-specific
-- `eSigma dM dd dm` — Sigma elimination
-- `eQtr dL dp dl dcoh` — Qtr elimination
-- `conv d dAB` — structural
-- `weakenTm d wf` — structural
-- `substTmRule d fits'` — structural
+**v27 approach failed**: taking `Derivable + Acc _<_ (substTaskMeasure dm)` hits a dead end because the caller must wrap `dm_orig` (context `B_orig ∷ A_orig ∷ gamma`) into the substituted context via `substTmRule dm_orig <2-binder lift of sigma>`, and `derivSize (substTmRule dm fits) > derivSize dm`, so `substMeasure-cSigma-m<` no longer bounds the new derivation.
 
-**`substDerivTmEqComp`** handles `Derivable (termEq gamma t u A)`:
-- `reflTm d` — structural
-- `symTm d` — structural
-- `transTm d₁ d₂` — structural
-- `convEq d dAB` — structural
-- `cTop d` — Top-specific
-- `iSigmaEq dac dbd dA dB` — Sigma-specific
-- `eSigmaEq dM dd dm` — Sigma-specific
-- `cSigma dM db dc dm` — Sigma-specific
-- `iEqEq d` — Eq-specific
-- `eEqStar dp dA da db` — Eq-specific
-- `cEq dp dA da db` — Eq-specific
-- `iQtrEq da db` — Qtr-specific
-- `eQtrEq dL dp dl dcoh dcoh'` — Qtr-specific
-- `cQtr dL da dl dcoh` — Qtr-specific
-- `weakenTmEq d wf` — structural
-- `substTmEqRule d fits'` — structural
-- `eqSubTmRule d fitsEq'` — structural
-- `eqSubTmEqRule d fitsEq'` — structural
-
-**eq-substitution variants** (`eqSubDerivTyComp` etc.) handle the same constructors but produce `typeEq`/`termEq` results (the "equal substitution" judgment).
-
-#### FROZEN RULE: Open sub-derivations within SCC 2
-
-When SCC 2 encounters a constructor with an open sub-derivation (e.g., `fSigma dA dB` where `dB : Derivable (isType (A ∷ gamma) B)`), the closure body must recurse on the **original sub-derivation** (`dB`) with composed fits. **No freshly constructed `substTyRule`, `eqSubTyRule`, or similar wrapper may appear inside a closure body.** This is the only termination-safe construction.
-
-**Rejected approach**: `openWrapTy (substTyRule dB extFits)` — closure would call `substDerivTyComp (substTyRule dB extFits) ...` which is NOT structurally smaller than `fSigma dA dB` at the creation site. Agda's termination checker rejects this.
-
-**Correct pattern** (applies uniformly to `fSigma`, `eSigma`, `cSigma`, `eQtr`, `cQtr`, `fSigmaEq`, and all other constructors with extended-context sub-derivations):
-
+**v28 approach: pre-computed Computable body.** Rewrite `compCSigmaClosed` ([CompTheorem.agda:609-737](src/TReg/CompTheorem.agda#L609-L737)) to take a body Computable directly:
 ```agda
-substDerivTyComp (fSigma dA dB) fits cFits =
-  let compA = substDerivTyComp dA fits cFits  -- sub-term ✓
-  in compFSigmaClosed compA
-    (compTyOpen nonemptyNeNil
-      (substTyRule dB (liftFitsOne fits (compToDerivable compA)))
-      (λ tau fits2 →
-        -- fits2 : FitsSubst [] (subTy sigma A ∷ []) tau
-        -- Compose fits2 with fits to get FitsSubst [] (A ∷ gamma) composedSub
-        let (cFits2 , cCFits2) = composeOneBinder fits fits2 cFits
-        in subst (...) (substDerivTyComp dB cFits2 cCFits2))  -- dB: sub-term of fSigma ✓
-      (λ tau1 tau2 fitsEq2 →
-        let (cFitsEq2 , cCFitsEq2) = composeOneBinderEq fits fitsEq2 cFits
-        in subst (...) (eqSubDerivTyComp dB cFitsEq2 cCFitsEq2)))  -- dB: sub-term ✓
+compCSigmaClosed : ...
+  -> Computable n (hasTy (subTy sigma A ∷ []) (subTm (liftSubst sigma) b)
+        (subTy (liftSubst sigma) B))   -- THE NEW ARG: pre-computed body
+  -> Computable n (termEq [] ... (singleSubst sigma ...))
 ```
+The combinator body's single `sub (sigmaCompSub …) …` invocation at [638](src/TReg/CompTheorem.agda#L638) becomes a `compSubst` call (or direct projection) on the pre-computed body Computable. Rest of the 130-line body is unchanged.
 
-The closures capture `dB` from the enclosing scope. At the creation site, Agda sees `substDerivTyComp dB ...` where `dB` IS a sub-term of `fSigma dA dB`. ✓
+Identical treatment for `compCQtrClosed` ([CompTheorem.agda:1282-1412](src/TReg/CompTheorem.agda#L1282-L1412)).
 
-**Two-binder cases** (`eSigma`/`cSigma` branch `dm : Derivable (hasTy (B ∷ A ∷ gamma) m ...)`, `eQtr`/`cQtr` coherence `dcoh : Derivable (termEq (wkTyBy 1 A ∷ A ∷ gamma) ...)`): same pattern but closures use `composeTwoBinders` to compose the outer fits through two binders. For qtr, `composeTwoBinders` is called with `B = wkTyBy 1 A` and `dWkAσ` is built via `weakenTy dAσ wf` + transport along `sym (wkTyLiftSubst sigma A)`. Closures recurse on `dm`/`dcoh` (original sub-derivations). ✓
+**The substitution-composition plumbing moves to the CALLER** (SCC 2 case body). At the cSigma case around [CompTheorem.agda:4141](src/TReg/CompTheorem.agda#L4141) and cQtr case around [CompTheorem.agda:3943](src/TReg/CompTheorem.agda#L3943), the caller has `(acc rs) : Acc _<_ (substTaskMeasure (cSigma …))` and a sub-Acc via `rs _ (substMeasure-cSigma-m< …) : Acc _<_ (substTaskMeasure dm)`. The caller builds the body Computable via `substDerivTmCompCF dm (composedFits) (composedCFits) subAcc`, where `composedFits` is a 2-binder lift of the outer `sigma` and `composedCFits` is the corresponding `ComputableFits` (use existing `liftCompFits` / 2-binder analogue if available, else add).
 
-#### FitsSubst extension helpers (named, exact)
+Add missing decrease lemmas `substMeasure-cSigma-m<` and `substMeasure-cQtr-l<` to [Measure.agda](src/TReg/Measure.agda) if not present.
 
-For constructors with extended contexts, we need to build `FitsSubst [] (A ∷ gamma) composedSigma` from components. The exact helpers needed:
+**Scope risk**: the 2-binder lift of a ComputableFits is new plumbing (~30-60 LoC per SCC 2 caller, x6 sites = ~200-360 LoC). If an existing lift helper exists in the current codebase (check for `lift2CompFits` or similar), this is cheaper.
 
-**`extendFitsSingle`**: Given `FitsSubst [] gamma sigma`, a term `t`, and `Derivable (hasTy [] t (subTy sigma A))`, build `FitsSubst [] (A ∷ gamma) (consSubst t sigma)`.
-- Implementation: `fitsCons fits dt` — this is just the `fitsCons` constructor! ✓
+- **Gate:** `agda src/TReg/CompTheorem.agda` clean, TERMINATING still present. **Rollback:** revert both files.
 
-**`extendCompFitsSingle`**: Given `CompFitsSubst [] gamma sigma`, `Computable (hasTy [] t (subTy sigma A))`, build `CompFitsSubst (A ∷ gamma) (consSubst t sigma)`.
-- Implementation: `compFitsCons cFits compT` — just the constructor ✓
+### Stage 3 — Elimination-rule rewrites: `compESigmaClosed`, `compEQtrClosed` *(2 days)*
+- Rewrite `compESigmaClosed` ([CompTheorem.agda:739-1243](src/TReg/CompTheorem.agda#L739-L1243)) to take `(dmm' : Derivable ...) → Acc _<_ (substTaskMeasure dmm')` instead of `compmm' : HypComputable`. The single `subEq (sigmaCompSub …) (sigmaCompSub …) …` invocation at [834](src/TReg/CompTheorem.agda#L834) becomes `eqSubDerivTmEqCompCF dmm' branchFitsEq.fitsEq branchFitsEq.compFitsEq accDmm'`. The ~400 LoC of `mkLeftCanon` / `mkRightCanon` / `mkRightCanonSym` machinery is untouched — it operates on raw derivations and closed `Computable` values only.
+- **Risk flag:** a small subst/cong bridge (~10 LoC) may be needed because `eqSubDerivTmEqCompCF`'s return type uses `subTy sigma A` while the original `subEq` call used `closedEqSubJ sigma tau J`. These should be definitionally equal but may require a rewrite.
+- Same treatment for `compEQtrClosed` ([CompTheorem.agda:1414+](src/TReg/CompTheorem.agda#L1414)). **Scope risk:** `compEQtrClosed` takes two coherence HypComputables (`coh`, `coh'`). Before editing, verify that each of the four closures (`sub`/`subEq` on each of `coh`/`coh'`/`compll'`) is invoked at only one substitution shape per closure; if any is invoked at multiple shapes, the refactor needs multiple Acc parameters and may bloat.
+- Keep `compM`/`compL` (the motive HypComputable) unchanged at this stage — they are consumed via `compSingleEqSubstTyClosed` which is defined in Structural.agda and takes HypComputable. Stage 4b changes that.
+- Add missing decrease lemmas (`substMeasure-eSigmaEq-dmm<`, `substMeasure-eQtrEq-dll<`, `substMeasure-eQtrEq-dcoh<`, `substMeasure-eQtrEq-dcoh'<`) as needed.
+- **Gate:** `agda src/TReg/CompTheorem.agda` clean, TERMINATING still present. **Rollback:** revert CompTheorem.agda and Measure.agda.
 
-**`composeFitsSingle`**: Given outer `FitsSubst [] (subTy sigma A ∷ []) tau` and inner `FitsSubst [] gamma sigma`, build `FitsSubst [] (A ∷ gamma) (compSub tau (liftSubst sigma))`. This is for the one-binder case (Sigma family, Qtr family, Eq family).
-- The outer fits gives `tau 0 : hasTy [] (tau 0) (subTy tau (subTy sigma A))`. Need path: `subTy tau (subTy sigma A) ≡ subTy (compSub tau (liftSubst sigma)) A`.
-- Build: `fitsCons (composeFitsInner tau fits) transportedEntry`.
-- `composeFitsInner tau fits`: For each entry `dt_i : Derivable (hasTy [] (sigma i) (subTy sigma A_i))` in `fits`, produce `Derivable (hasTy [] (sigma i) (subTy (compSub tau (liftSubst sigma)) A_i))` — but this needs `tau` applied to closed terms, which is trivial (closed terms are substitution-invariant modulo path).
+### Stage 4 — Binder-helper rewrites + Raw variants *(1.5 days)*
 
-Actually this is getting complex. The simpler approach:
+**Stage 4a — delete intermediate HypComputable constructions at SCC 2 case sites.** After Stages 2–3, the combinators no longer need HypComputable for their branch-term arguments. At every SCC 2 case body that currently constructs `compdm`/`compdp`/`compcoh`/`compcoh'`/`compll'` via `openHypTm1`/`openHypTm2`/`openHypTmEq1`/`openHypTmEq2`/`weakenOneOpenTmEq`, delete the construction and pass the raw `dm`/`dp`/`dcoh`/`dcoh'`/`dll'` + sub-Acc directly. Affected case bodies: eSigma / eSigmaEq / cSigma / iSigmaEq / eQtr / eQtrEq / cQtr in `substDerivTm(Eq)CompCF` and `eqSubDerivTm(Eq)CompCF`. Estimated **−150 to −300 LoC of dead closure-building code**.
 
-**For one-binder cases in SCC 2**, the closure receives `FitsSubst [] (subTy sigma A ∷ []) tau`. This `tau` is `consSubst t₀ idSubst` for some `t₀`. We need `FitsSubst [] (A ∷ gamma) composedSub` where `composedSub = consSubst t₀ sigma`. Build it as:
-```agda
-fitsCons fits (subst-transport dt₀)
-```
-where `dt₀` comes from the outer FitsSubst entry, transported along the path `subTy tau (subTy sigma A) ≡ subTy (consSubst t₀ sigma) A`.
+**Stage 4b — `compSingleEqSubstTyClosedRaw` / `compSingleSubstTyEqClosedRaw`.** Introduce raw variants in [Structural.agda](src/TReg/Structural.agda) that take `(dB : Derivable …) → Acc _<_ (substTaskMeasure dB)` and call `eqSubDerivTyCompCF dB …` / `substDerivTyEqCompCF dB …` directly. Update `compESigmaClosed`/`compEQtrClosed` to use the Raw variant for the motive path. This lets us also drop the `compM`/`compL` HypComputable argument from those combinators, making them take only raw `Derivable` + Acc. The motive HypComputable construction in SCC 2 case bodies ([CompTheorem.agda:3042-3073](src/TReg/CompTheorem.agda#L3042-L3073) and analogs) disappears.
 
-This is exactly the `singleFitsSubstHelper` / `sigmaCompFitsHelper` pattern from [Presupposition.agda:192-257](src/TReg/Presupposition.agda#L192), adapted for the composed substitution case.
+**Stage 4 also orphans** `openHypTm1`/`openHypTm2`/`openHypTmEq1`/`openHypTmEq2`/`sigmaBranchTyHypFromMotive`/`weakenOneOpenTm*` from SCC 2 — they are no longer called from inside the mutual block, only from `hyp*`-building code in the post-SCC-2 layer.
 
-**For two-binder cases** (`eSigma`/`cSigma` with `B ∷ A ∷ gamma`, `eQtr` coherence with `wkTyBy 1 A ∷ A ∷ gamma`):
+- **Gate:** `agda src/TReg/CompTheorem.agda` clean, TERMINATING still present. **Rollback:** revert CompTheorem.agda, Structural.agda, Measure.agda.
 
-The closure receives `FitsSubst [] (subTy sigma (tySigma A B) ∷ []) tau` (for Sigma motive) or `FitsSubst [] (subTy sigma A ∷ []) tau` (for Sigma branch — but the branch lives in `B ∷ A ∷ gamma`, so after substituting sigma for gamma, the branch context is `subTy (liftSubst sigma) B ∷ subTy sigma A ∷ []`, and the closure receives `FitsSubst [] (subTy (liftSubst sigma) B ∷ subTy sigma A ∷ []) tau`).
+### Stage 5 — Move `mkHypComputable*` layer out of the SCC 2 mutual block *(0.5 day)*
+- Grep-verify that after Stage 4 no function inside the SCC 2 mutual block calls `mkHypComputable*`, `sigmaTyFamHypClosed`, `sigmaBranchTyHypFromMotive`, `openHypTm*`, `openHypTmEq*`, `weakenOneOpen*`, `hypTyEqRight`, `hypTmEqRight`, `hypReflTm`, `compTransTm`, `compSymTm`, or `compTransTyOpenHelper`. Expect: every hit is either inside one of these helpers themselves (they may still call each other), or in a post-SCC-2 section (`compTransportFamilyTy*`, `compTransTyClosedAcc`, etc.), or in Structural.agda.
+- Physically move the helpers out of the `mutual` block and below SCC 2 (still inside [CompTheorem.agda](src/TReg/CompTheorem.agda)). They can still reference `substDerivT*CompCF` / `eqSubDerivT*CompCF` because the SCC 2 mutual block is now fully defined above them.
+- Agda's SCT on the post-SCC-2 layer sees `mkHypComputableTy d = hypTyOpen neq d (λ … → substDerivTyCompCF d … (<-wellfounded _))` as: helper builds a data value containing a closure that calls a lower layer. This is **not** mutual recursion from the post-SCC-2 layer's perspective, and SCT accepts it without TERMINATING.
+- **Gate:** `agda src/TReg/CompTheorem.agda` clean with **TERMINATING removed from the SCC 2 mutual block**. (Post-SCC-2 layer should also not need TERMINATING.) **Rollback:** restore TERMINATING; see Plan B below.
 
-For the branch, `tau = consSubst t₁ (consSubst t₀ idSubst)`. We build `FitsSubst [] (B ∷ A ∷ gamma) (consSubst t₁ (consSubst t₀ sigma))` as:
-```agda
-fitsCons (fitsCons fits dt₀_transported) dt₁_transported
-```
-
-**Binder-composition helpers** (pre-mutual in CompTheorem.agda, ~5-15 lines each using `subTyComp`, `subTmComp`, `liftSubstCompKeep`):
-
-For each variant (FitsSubst, CompFitsSubst, FitsEqSubst, CompFitsEqSubst) × (one-binder, two-binder):
-
-| Helper | Inputs | Output |
-|--------|--------|--------|
-| `composeOneBinder` | `FitsSubst [] gamma sigma` + `FitsSubst [] (subTy sigma A ∷ []) tau` | `FitsSubst [] (A ∷ gamma) composedSub` |
-| `composeOneBinderComp` | `CompFitsSubst gamma sigma` + `FitsSubst [] (subTy sigma A ∷ []) tau` | `CompFitsSubst (A ∷ gamma) composedSub` |
-| `composeOneBinderEq` | `FitsSubst [] gamma sigma` + `FitsEqSubst [] (subTy sigma A ∷ []) tau1 tau2` | `FitsEqSubst [] (A ∷ gamma) ...` |
-| `composeOneBinderCompEq` | `CompFitsEqSubst gamma sigma tau` + `FitsEqSubst [] ...` | `CompFitsEqSubst (A ∷ gamma) ...` |
-| `composeTwoBinders` | analogous, for `B ∷ A ∷ gamma` | `FitsSubst [] (B ∷ A ∷ gamma) composedSub` |
-| `composeTwoBindersComp`/`Eq`/`CompEq` | analogous | ... |
-
-**Qtr coherence** (`wkTyBy 1 A ∷ A ∷ gamma`): use two-binder helpers with `B = wkTyBy 1 A`. Build `dWkAσ : Derivable (isType (subTy sigma A ∷ []) (subTy (liftSubst sigma) (wkTyBy 1 A)))` from `weakenTy dAσ (wfCons wfθ dAσ)` transported along `sym (wkTyLiftSubst sigma A)`. The path `wkTyLiftSubst` is added to [Substitution.agda](src/TReg/Substitution.agda) in Phase 3.0.
-
-#### Handling weakenTy/Tm in SCC 2
-
-`substDerivTyComp (weakenTy {delta = delta} d wf) fits cFits`:
-- `d : Derivable (isType gamma A)`, `wf : CtxWF (delta ++ gamma)`
-- `fits : FitsSubst [] (delta ++ gamma) sigma`
-- Split fits: `dropFits delta fits` gives `FitsSubst [] gamma (dropSubstBy (length delta) sigma)`
-- Recurse: `substDerivTyComp d (dropFits delta fits) (dropCompFits delta cFits)`
-- Transport result along `subTy sigma (wkTyBy (length delta) A) ≡ subTy (dropSubstBy (length delta) sigma) A` (from `subTyWkBy`)
-
-Need: **`dropCompFits`** — analogous to `dropFits` but for `CompFitsSubst`. ~10 lines, pattern match on the `drop` list, stripping `compFitsCons` entries.
-
-Similarly **`dropCompFitsEq`** for `CompFitsEqSubst`.
-
-#### Handling substTyRule/substTmRule in SCC 2
-
-`substDerivTyComp (substTyRule {delta = delta'} d' fits') fits cFits`:
-- `d' : Derivable (isType delta' A)`, `fits' : FitsSubst gamma delta' sigma'`
-- `fits : FitsSubst [] gamma sigma`
-- Need: `FitsSubst [] delta' (compSub sigma sigma')` and `CompFitsSubst [] delta' (compSub sigma sigma')`
-- Build by composing: for each entry in `fits'`, apply `substTmRule` using `fits` entries.
-
-**Naming convention**: The existing `composeFits` / `composeFitsEq` / `composeEqFits` / `composeEqFitsEq` in [Structural.agda#L868-L950](src/TReg/Structural.agda#L868) produce `FitsSubst`/`FitsEqSubst` (derivation-level). They are already used by `liftFits`/`liftFitsEq`. We **reuse** them as-is. The NEW helpers that produce `CompFitsSubst`/`CompFitsEqSubst` are named `composeCompFits` / `composeCompFitsEq`:
-
-**`composeCompFits`**: Given `FitsSubst gamma delta' sigma'` + `FitsSubst [] gamma sigma` + `CompFitsSubst gamma sigma`, produce `FitsSubst [] delta' (compSub sigma sigma')` × `CompFitsSubst delta' (compSub sigma sigma')`.
-
-```agda
-composeCompFits (fitsNil wf) fits cFits = (fitsNil wfNil , compFitsNil)
-composeCompFits (fitsCons fits' dt) fits cFits =
-  let (composedTail, composedCTail) = composeCompFits fits' fits cFits
-      compEntry = substDerivTmComp dt fits cFits  -- dt is sub-term of fitsCons ✓
-      transported = subst (...) (subTyComp ...) compEntry
-  in (fitsCons composedTail (compToDerivable transported),
-      compFitsCons composedCTail transported)
-```
-
-`composeCompFits` is structural on `FitsSubst`. Each entry calls `substDerivTmComp` on `dt` (sub-term of `fitsCons`) with the SAME `fits`/`cFits`. Agda sees: `fits'` is structural on `FitsSubst`, `dt` is structural on the entry. ✓ Must live inside the mutual block since it calls `substDerivTmComp`.
-
-**`composeCompFitsEq`**: Analogous, producing `FitsEqSubst` × `CompFitsEqSubst`.
-
-#### Variable case
-
-`substDerivTmComp (varStar {delta = delta} wf dA) fits cFits`:
-- Need: `Computable (hasTy [] (subTm sigma (var (length delta))) (subTy sigma (wkTyBy (suc (length delta)) A)))`
-- `lookupVarFits fits` gives `Derivable (hasTy [] ...)` — but we need `Computable`.
-- Use **`lookupCompFits`**: Extract from `CompFitsSubst` at variable position.
-
-**`lookupCompFits`**: Analogous to `lookupVarFits` ([CompTheorem.agda:166-182](src/TReg/CompTheorem.agda#L166)) but extracts `Computable` from `CompFitsSubst`.
-```agda
-lookupCompFits : {delta gamma : Ctx} {A : RawType} {sigma : Subst}
-  → CompFitsSubst (delta ++ (A ∷ gamma)) sigma
-  → Computable (hasTy [] (subTm sigma (var (length delta)))
-       (subTy sigma (wkTyBy (suc (length delta)) A)))
-```
-Pattern match on `CompFitsSubst`, strip entries for `delta`, return the `A` entry with path transport. ~15 lines.
-
-**`lookupCompFitsEq`**: Analogous for `CompFitsEqSubst`.
-
-#### fitsToCompFits / fitsEqToCompFitsEq
-
-```agda
-fitsToCompFits : FitsSubst [] gamma sigma → CompFitsSubst gamma sigma
-fitsToCompFits (fitsNil wf) = compFitsNil
-fitsToCompFits (fitsCons fits dt) =
-  compFitsCons (fitsToCompFits fits)
-    (subst-transport (substDerivTmComp dt (fitsNil wfNil) compFitsNil))
-```
-
-**Safety**: `dt : Derivable (hasTy [] t (subTy sigma A))` has context `[]`. `substDerivTmComp dt emptyFits emptyCompFits` recurses structurally on `dt`. Since context is `[]`, `varStar` is impossible. The identity substitution on empty context is trivial. Need path: `subTm idSubst t ≡ t` and `subTy idSubst A ≡ A` (from `subTmId`, `subTyId` in [Substitution.agda:132-139](src/TReg/Substitution.agda)).
-
-`fitsToCompFits` is structural on `FitsSubst`. Each entry calls `substDerivTmComp` on `dt` (sub-term of `fitsCons`). ✓
-
-```agda
-fitsEqToCompFitsEq : FitsEqSubst [] gamma sigma tau → CompFitsEqSubst gamma sigma tau
-fitsEqToCompFitsEq (fitsEqNil wf) = compFitsEqNil
-fitsEqToCompFitsEq (fitsEqCons fitsEq dtu) =
-  compFitsEqCons (fitsEqToCompFitsEq fitsEq)
-    (subst-transport (substDerivTmEqComp dtu (fitsNil wfNil) compFitsNil))
-```
+### Stage 6 — Restore `--safe` and verify end-to-end *(0.25 day)*
+- Delete `{-# TERMINATING #-}` at [CompTheorem.agda:186](src/TReg/CompTheorem.agda#L186).
+- Change [CompTheorem.agda:1](src/TReg/CompTheorem.agda#L1) from `{-# OPTIONS #-}` back to `{-# OPTIONS --safe --cubical #-}`. Remove the stale "Cannot use --safe" comment at the top of [SigmaComp.agda:1](src/TReg/SigmaComp.agda#L1), [QtrComp.agda](src/TReg/QtrComp.agda), [EqComp.agda](src/TReg/EqComp.agda), [TopComp.agda](src/TReg/TopComp.agda) if present and restore `--safe`.
+- Run `agda src/TReg/Everything.agda`. Expected: clean build, no TERMINATING in TReg.
+- Verify with `rg -n '^\{-# TERMINATING #-\}' src/TReg/` — zero hits.
 
 ---
 
-### Revised mutual block membership
+## Plan B — Narrow-TERMINATING fallback *(triggered if Stage 5 fails)*
 
-#### Inside the mutual block
+If Stage 5 reveals a hidden cycle — e.g. `compTransTyClosedAcc` calls `hypComputableTyEq` which calls `mkHypComputableTyEq` whose closure body recurses into `substDerivTyEqCompCF` — then removing TERMINATING from the SCC 2 mutual block may fail. The fallback:
 
-**SCC 1 (structural on Derivable):**
-- `computableTheorem` — explicit cases per constructor, gamma=[] uses closed helpers, gamma≠[] dispatches to `openCompTy`/etc.
-
-**SCC 2 (structural on Derivable × FitsSubst, no cycle to SCC 1):**
-- `substDerivTyComp`, `substDerivTmComp`, `substDerivTyEqComp`, `substDerivTmEqComp`
-- `eqSubDerivTyComp`, `eqSubDerivTmComp`, `eqSubDerivTyEqComp`, `eqSubDerivTmEqComp`
-- `fitsToCompFits`, `fitsEqToCompFitsEq`
-- Four computable-fit composition helpers (all NEW, inside the mutual block). Each mirrors a derivable helper from [Structural.agda#L868-L950](src/TReg/Structural.agda#L868):
-
-  | Helper | Outer | Inner | Inner entries | SCC 2 call on each entry | Mirrors |
-  |--------|-------|-------|---------------|--------------------------|---------|
-  | `composeCompFits` | `FitsSubst [] gamma sigma` × `CompFitsSubst` | `FitsSubst gamma delta sigma'` | `Derivable (hasTy gamma t ...)` | `substDerivTmComp` | `composeFits` |
-  | `composeCompEqFits` | `FitsEqSubst [] gamma sigma tau` × `CompFitsEqSubst` | `FitsSubst gamma delta sigma'` | `Derivable (hasTy gamma t ...)` | `eqSubDerivTmComp` | `composeEqFits` |
-  | `composeCompFitsEq` | `FitsSubst [] gamma sigma` × `CompFitsSubst` | `FitsEqSubst gamma delta sigma' tau'` | `Derivable (termEq gamma t u ...)` | `substDerivTmEqComp` | `composeFitsEq` |
-  | `composeCompEqFitsEq` | `FitsEqSubst [] gamma sigma tau` × `CompFitsEqSubst` | `FitsEqSubst gamma delta sigma' tau'` | `Derivable (termEq gamma t u ...)` | `eqSubDerivTmEqComp` | `composeEqFitsEq` |
-
-  Each is structural on the inner `FitsSubst`/`FitsEqSubst`, calling the listed SCC 2 function on entries (sub-terms of the inner fits). The outer fits/cFits are passed unchanged.
-
-**In-place rewrites of existing functions (no new wrapper family — rewrite bodies only):**
-- `openCompTy` (line 438) rewritten in-place: `openCompTy d = compTyOpen nonemptyNeNil d (λ sigma fits → substDerivTyComp d fits (fitsToCompFits fits)) (λ sigma tau fitsEq → eqSubDerivTyComp d fitsEq (fitsEqToCompFitsEq fitsEq))`
-- `openCompTyEq` (line 448), `openCompTm` (line 459), `openCompTmEq` (line 470) — same pattern, rewritten in-place
-- `substTyClosed d fits = substDerivTyComp d fits (fitsToCompFits fits)` — ALWAYS, no `with` dispatch
-- `substTyEqClosed`, `substTmClosed`, `substTmEqClosed` — same
-- `eqSubTyClosed d fitsEq = eqSubDerivTyComp d fitsEq (fitsEqToCompFitsEq fitsEq)` — fixes the infinite loop
-- `eqSubTyEqClosed`, `eqSubTmClosed`, `eqSubTmEqClosed` — same
-
-**Acc-based workers (already implemented, lines 715-890):**
-- `compSymTyClosedAcc`, `compTransTyClosedAcc` — Acc on `closedTaskMeasure`
-- `compSymTyClosed`, `compTransTyClosed` — wrappers with `<-wellfounded`
-
-**Non-Acc helpers using openComp (which now uses SCC 2):**
-- `compTransportFamilyTy compAC compD = openCompTy (transportFamilyTy ...)` — no `computableTheorem`
-- `compTransportFamilyTyEq compAC compDF = openCompTyEq (transportFamilyTyEq ...)`
-- `compTyEqRight` — closed: `compTyEqRightClosed`; open: existing code at lines 899-911 (already SCC-safe — closures use the comp's own stored closures + `compTransTyClosed`/`compSymTyClosed`)
-
-**General dispatchers (keep general-gamma signatures, dispatch closed/open):**
-- `compSymTy comp` — closed cases → `compSymTyClosed comp`; open → `openCompTyEq (symTy d)`
-- `compTransTy comp₁ comp₂` — closed → `compTransTyClosed`; open → `openCompTyEq (transTy d₁ d₂)`
-- `compConvTm comp compAB` — closed → `compConvTmClosed`; open → `openCompTm (conv d dAB)`
-- `compConvTmEq comp compAB` — closed → `compConvTmEqClosed`; open → `openCompTmEq (convEq d dAB)`
-- `compSymTm comp` — closed → `compSymTmClosed`; open → `openCompTmEq (symTm d)`
-
-**Variable/weakening handlers (unchanged — once openComp uses SCC 2, these are fine):**
-- `computeVar wf dA` (lines 979-987) — `openCompTm (varStar wf dA)`, unchanged
-- `computeWeakenTy` (lines 913-927) — existing four-way split: gamma=[],delta=[] → `computableTheorem d` + transport; otherwise → `openCompTy (weakenTy d wf)`. Unchanged.
-- `computeWeakenTyEq` (lines 929-943), `computeWeakenTm` (lines 945-959), `computeWeakenTmEq` (lines 961-977) — same pattern, unchanged
-
-**`compWeaken` (lines 670-681):** thin wrapper over `computeWeaken*` helpers — no decision needed, just calls `computeWeakenTy`/etc. which are already correct. Rewrite body to delegate directly:
-```agda
-compWeaken {J = isType gamma A} compJ deltaWF = computeWeakenTy (compToDerivable compJ) deltaWF
-compWeaken {J = typeEq gamma A B} compJ deltaWF = computeWeakenTyEq (compToDerivable compJ) deltaWF
-compWeaken {J = hasTy gamma t A} compJ deltaWF = computeWeakenTm (compToDerivable compJ) deltaWF
-compWeaken {J = termEq gamma t u A} compJ deltaWF = computeWeakenTmEq (compToDerivable compJ) deltaWF
-```
-
-**`compSubst` (lines 683-694) — general-gamma dispatch:**
-```agda
-compSubst {gamma = []} {J = isType delta A} comp fits = substTyClosed (compToDerivable comp) fits
-compSubst {gamma = B ∷ gamma'} {J = isType delta A} comp fits = openCompTy (substTyRule (compToDerivable comp) fits)
--- same pattern for typeEq, hasTy, termEq
-```
-`gamma = []` uses thin SCC 2 wrappers. `gamma = B ∷ _` uses `openCompXxx` (which now uses SCC 2 closures).
-
-**`compEqSubst` (lines 696-707) — general-gamma dispatch:**
-```agda
-compEqSubst {gamma = []} {J = isType delta A} comp fitsEq = eqSubTyClosed (compToDerivable comp) fitsEq
-compEqSubst {gamma = B ∷ gamma'} {J = isType delta A} comp fitsEq = openCompTyEq (eqSubTyRule (compToDerivable comp) fitsEq)
--- same for typeEq → openCompTyEq, hasTy → openCompTmEq, termEq → openCompTmEq
-```
+- Keep the post-SCC-2 layer (`mkHypComputable*`, `hypComputable*`, `hypTyEqRight`, `hypTmEqRight`, `hypReflTm`, `compTransTyOpenHelper`, `compTransportFamilyTy*`, `compSymTransportFamilyTyEq`, `compTransTm`, `compSymTm`, `weakenOneOpenTy/Tm/TmEq`, `sigmaBranchTyHypFromMotive`, `sigmaTyFamHypClosed`, `sigmaTyFamEqSubClosed`) in a **dedicated narrow `{-# TERMINATING #-}` block of ~800 LoC at the bottom of CompTheorem.agda**.
+- The main SCC 2 mutual block (~6000 LoC — the subject reduction machinery) becomes **fully `--safe` and TERMINATING-free**.
+- This is a **7× reduction in the audit surface** from the status quo (the current single TERMINATING block is the entire ~8000-LoC mutual). Even without the full removal, this is a qualitatively better outcome.
 
 ---
 
-### computableTheorem gamma=[] cases — MOSTLY UNCHANGED
+## Key sites for implementation
 
-**Key insight**: Most `computableTheorem` gamma=[] cases call `computableTheorem` on SUB-TERMS (structurally smaller), which dispatch to `openCompTy`/`openCompTm` etc. Once those lower-level functions use SCC 2 closures instead of `computableTheorem`, termination is automatic. No changes needed for:
+### Producers (build HypComputable)
+- [`mkHypComputableTy`](src/TReg/CompTheorem.agda#L6526), [`mkHypComputableTyEq`](src/TReg/CompTheorem.agda#L6581), [`mkHypComputableTm`](src/TReg/CompTheorem.agda#L6593), [`mkHypComputableTmEq`](src/TReg/CompTheorem.agda#L6606)
+- [`hypComputableTy/TyEq/Tm/TmEq`](src/TReg/CompTheorem.agda#L6619) — trivial wrappers
+- [`openHypTm1`](src/TReg/CompTheorem.agda#L262), [`openHypTmEq1`](src/TReg/CompTheorem.agda#L326), [`openHypTm2`](src/TReg/CompTheorem.agda#L388), [`openHypTmEq2`](src/TReg/CompTheorem.agda#L465)
+- [`sigmaBranchTyHypFromMotive`](src/TReg/CompTheorem.agda#L6965) — ~300 LoC, called at 6 SCC 2 sites
+- [`compTransportFamilyTy`](src/TReg/CompTheorem.agda#L6693), [`compTransportFamilyTyEq`](src/TReg/CompTheorem.agda#L6736), [`compSymTransportFamilyTyEq`](src/TReg/CompTheorem.agda#L6792)
+- [`hypTyEqRight`](src/TReg/CompTheorem.agda#L6646), [`hypTmEqRight`](src/TReg/CompTheorem.agda#L6666), [`hypReflTm`](src/TReg/CompTheorem.agda#L6682)
+- [`compTransTyOpenHelper`](src/TReg/CompTheorem.agda#L6784), [`compTransTm`](src/TReg/CompTheorem.agda#L6811), [`compSymTm`](src/TReg/CompTheorem.agda#L6829)
+- [`weakenOneOpenTy`](src/TReg/CompTheorem.agda#L6852), [`weakenOneOpenTm`](src/TReg/CompTheorem.agda#L6881), [`weakenOneOpenTmEq`](src/TReg/CompTheorem.agda#L6915)
 
-- `fSigma dA dB` — `computableTheorem dB` dispatches to `openCompTy dB` (SCC 2 closures) ✓
-- `fEq dA da db` — all sub-derivations closed (gamma=[]) ✓
-- `fQtr dA`, `iTop`, `iSigma`, `iEq`, `iQtr` — same ✓
-- `eSigma dM dd dm` — `computableTheorem dM` and `computableTheorem dm` dispatch to openComp ✓
-- `eQtr`, `cSigma`, `cQtr`, `fSigmaEq`, `fEqEq`, `fQtrEq`, `iSigmaEq`, `eSigmaEq`, `eQtrEq` — same ✓
-- `reflTy`, `reflTm`, `symTm`, `transTm`, `convEq`, `conv` — all call closed helpers or `computableTheorem` on sub-terms ✓
-- `symTy` already calls `compSymTyClosed` (Acc-based) ✓
-- `transTy` already calls `compTransTyClosed` (Acc-based) ✓
+### Combinators to rewrite (SCC 2 mutual block)
+- **Stage 1**: [`compFSigmaClosed`](src/TReg/CompTheorem.agda#L582) — trivial
+- **Stage 2**: [`compCSigmaClosed`](src/TReg/CompTheorem.agda#L609), [`compCQtrClosed`](src/TReg/CompTheorem.agda#L1282)
+- **Stage 3**: [`compESigmaClosed`](src/TReg/CompTheorem.agda#L739), [`compEQtrClosed`](src/TReg/CompTheorem.agda#L1414)
 
-**Cases that DO change**:
-- `substTyRule`, `substTyEqRule`, `substTmRule`, `substTmEqRule`, `eqSubTyRule`, `eqSubTyEqRule`, `eqSubTmRule`, `eqSubTmEqRule` — rewritten in Phase 3c/3d (thin SCC 2 wrappers)
-- Three `compConvTm` calls inside `computableTheorem` gamma=[] cases must become `compConvTmClosed`:
-  - Line 1050: `compConvTm compcA compAC` → `compConvTmClosed compcA compAC` (in `fEqEq`)
-  - Line 1051: `compConvTm compdA compAC` → `compConvTmClosed compdA compAC` (in `fEqEq`)
-  - Line 1131: `compConvTm compdA (compSingleEqSubstTyClosed compB compac)` → `compConvTmClosed ...` (in `iSigmaEq`)
+### Extractor
+- [`sigmaTyFamHypClosed`](src/TReg/CompTheorem.agda#L7266) — called at lines [3038, 3381, 4032, 5326, 5400, 6019, 6160](src/TReg/CompTheorem.agda#L3038); all disappear after Stage 4a
 
----
+### External consumers (Structural.agda)
+- [`compSingleSubstTyEqClosed`](src/TReg/Structural.agda#L295), [`compSingleEqSubstTyClosed`](src/TReg/Structural.agda#L304) — continue to accept HypComputable from downstream callers; Stage 4b adds `...Raw` variants for use from inside the new combinators
 
-## Pre-mutual infrastructure (all in CompTheorem.agda, before the mutual block)
-
-### Already existing (baseline)
-- `subSubJIntoPath` family (lines 29-111) — substitution composition paths
-- `lookupVarFits`, `lookupVarFitsEq` (lines 176-212) — variable lookup in FitsSubst
-- `lookupCompFits`, `lookupCompFitsEq` (lines 214-250) — ✓ DONE
-- `dropFits`, `dropFitsEq` (lines 252-282) — drop prefix from FitsSubst
-- `dropCompFits`, `dropCompFitsEq` (lines 284-314) — ✓ DONE
-- `closedEqSubTy/TyEq/Tm/TmEq` (lines 316-346) — ✓ DONE (NOTE: eqSubTyClosed will stop using these once rewritten as SCC 2 wrapper)
-- `liftFits`, `liftFitsOne`, `liftFitsEq`, `liftFitsEqOne`, `liftSubstCompKeep` (lines 348-428) — ✓ DONE
-- `subTyWkBy`, `subTyWkStep`, `wkTyBy0`, `wkTmBy0`, `compSubKeepBy` (lines 134-166) — path helpers
-- `composeFits`, `composeFitsEq`, `composeEqFits`, `composeEqFitsEq` in [Structural.agda#L868-L950](src/TReg/Structural.agda#L868) — derivation-level composition (REUSED, not redefined)
-
-### Still needed (to add before the mutual block)
-- `composeOneBinder` / `composeOneBinderComp` / `composeOneBinderEq` / `composeOneBinderCompEq` (~15 lines each)
-- `composeTwoBinders` / `composeTwoBindersComp` / `composeTwoBindersEq` / `composeTwoBindersCompEq` (~20 lines each)
-- All use `subTyComp`, `subTmComp`, `liftSubstCompKeep`, and the existing path lemmas
+### Data type definitions
+- [`Computable`](src/TReg/Computability.agda#L36-L180) — unchanged
+- [`HypComputable`](src/TReg/Computability.agda#L213-L259) — unchanged (only the producer/consumer layer around it changes)
 
 ---
 
-## Modules affected
+## Risk assessment
 
-| Module | Change | Scope |
-|--------|--------|-------|
-| **Substitution.agda** | Add `wkTyLiftSubst` + `wkTmLiftSubst` (~6 lines) | Small |
-| **Derivability.agda** | Change 3 constructors: `A ∷ A ∷ gamma` → `wkTyBy 1 A ∷ A ∷ gamma` (3 lines) | Small |
-| **Presupposition.agda** | Update pattern matches on `eQtr`/`eQtrEq`/`cQtr` — mostly automatic (13 occurrences) | Small–Medium |
-| **QtrComp.agda** | Retype `compEQtrClosed`/`compCQtrClosed` signatures + all internal `dcoh`/`dcoh'`/`cohFitsRight`/derivation-assembly sites against new `wkTyBy 1 A ∷ A ∷ []` context. Logic unchanged, annotations change throughout. | Medium |
-| **CompTheorem.agda** | SCC 2 qtr cases + 4 thin wrappers + `computableTheorem` gamma=[] cases; remove TERMINATING, add --safe | Large |
-| **Everything.agda** | Add `{-# OPTIONS --safe #-}` | 1 line |
-| **Inversion.agda** | UNCHANGED | None |
-| **Evaluation.agda** | UNCHANGED | None |
+| Stage | Most likely failure mode | Mitigation |
+|---|---|---|
+| 1 | None | N/A |
+| 2 | Missing decrease lemma | Add `substMeasure-cSigma-m<` / `substMeasure-cQtr-l<` in Stage 0 |
+| 3 | `compEQtrClosed` closures invoked at multiple substitution shapes, requiring multiple Acc parameters | Read the full ~200 LoC body during Stage 0 audit; if multi-shape, plan extra Acc plumbing |
+| 3 | Subst/cong bridge needed between `eqSubDerivTmEqCompCF`'s return type and `closedEqSubJ` | ~10 LoC per call site; solvable |
+| 4b | `compSingleEqSubstTyClosedRaw` needs additional path-arithmetic helpers for the `(singleSubst t)` / `(singleSubst u)` shape | ~1 day bridging work; not a showstopper |
+| 5 | Hidden cycle preventing the layer move | Fall back to Plan B (narrow TERMINATING) — still a major improvement |
+
+**Most critical stage:** Stage 3 (`compEQtrClosed`). **Smallest stages (quick wins):** Stages 1 and 2.
 
 ---
 
-## Implementation phases
-
-### Phase 1: Representation change — DONE ✓
-
-### Phase 2: Pre-mutual infrastructure — DONE ✓
-Implemented by user:
-- `lookupCompFits`, `lookupCompFitsEq` (lines 214-250)
-- `dropCompFits`, `dropCompFitsEq` (lines 284-314)
-- `closedEqSubTy/TyEq/Tm/TmEq` helpers (lines 316-346)
-- `liftFits`, `liftFitsOne`, `liftFitsEq`, `liftFitsEqOne`, `liftSubstCompKeep` (lines 348-428)
-- `compSymTyClosedAcc`, `compTransTyClosedAcc` (lines 715-877) — Acc workers (Blocker 3)
-- `compSymTyClosed`, `compTransTyClosed` wrappers (lines 879-890) — currently inside mutual block (fine)
-
-### Phase 3: Add SCC 2 functions + rewire openComp/substClosed
-
-**Bug note**: The current `eqSubTyClosed` closed cases have an infinite loop: `eqSubTyClosed d fitsEq` → closed → `computableTheorem (closedEqSubTy d wfNil)` → `computableTheorem (eqSubTyRule d (fitsEqNil wfNil))` → `eqSubTyClosed d (fitsEqNil wfNil)` → loop. Same for `eqSubTyEqClosed`, `eqSubTmClosed`, `eqSubTmEqClosed`. The fix: SCC 2 replaces all these paths.
-
-**3a. Add SCC 2 functions to the mutual block** — MOSTLY DONE, ONE BLOCKER REMAINS
-
-All 8 SCC 2 functions + `fitsToCompFits` + `fitsEqToCompFitsEq` + 4 computable-fit composition helpers implemented and typechecking (with TERMINATING). Equal-substitution open helper layer added and sigma-side paths fully rewired.
-
-**Blocker A: computableTheorem calls within SCC 2 bodies — RESOLVED ✓**
-
-The implemented SCC 2 cases for constructors with binder-extended sub-derivations (fSigma, fSigmaEq, eSigma, cSigma, fEqEq, eqSubTy-fSigma, etc.) use the pattern `compSubst (computableTheorem dX) liftedFits` to build open Computable premises. This calls SCC 1 (`computableTheorem`) from within SCC 2 — it works under `{-# TERMINATING #-}` because `dX` is a structural sub-derivation, but Agda's termination checker cannot verify the cross-SCC call when TERMINATING is removed.
-
-Affected lines (all `compSubst/compEqSubst (computableTheorem dX) liftedFits` within SCC 2):
-- substDerivTyComp: 711 (fSigmaEq.dBD)
-- substDerivTyEqComp: 1017 (eqSubTy-fSigma.dB)
-- substDerivTmComp: 819 (eSigma.dM), 848 (eSigma.dm)
-- substDerivTmEqComp: 941 (cSigma-helper.dM), 970 (cSigma-helper.dm), 1057 (eSigmaEq-helper.dM), 1085 (eSigmaEq-helper.dm)
-- eqSubDerivTyComp: 1198 (fSigma.dB)
-- eqSubDerivTyEqComp: 1302 (fSigmaEq.dBD)
-- eqSubDerivTmComp: 1458 (eSigma.dM), 1507 (eSigma.dm)
-- eqSubDerivTmEqComp: 1604 (eqSubTy-fSigma.dB), 1644 (eSigmaEq-helper.dM), 1693 (eSigmaEq-helper.dm)
-
-**Fix**: Replace each `compSubst (computableTheorem dX) liftedFits` with a direct `compTyOpen`/`compTmOpen`/`compTmEqOpen` construction whose closures call SCC 2 on the original sub-derivation `dX` with composed fits (the frozen rule). Example for `substDerivTyComp (fSigma dA dB)`:
-
-```agda
--- BEFORE (SCC 1 call):
-compSubst (computableTheorem dB) (liftFitsOne fits dAσ)
-
--- AFTER (frozen-rule, pure SCC 2):
-compTyOpen nonemptyNeNil
-  (substTyRule dB (liftFitsOne fits dAσ))
-  (λ tau fits2 →
-    let composedFits = composeOneBinder fits dAσ fits2
-    in subst (...) (substDerivTyComp dB composedFits (fitsToCompFits composedFits)))
-  (λ tau1 tau2 fitsEq2 →
-    let composedFitsEq = composeOneBinderEq fits dAσ fitsEq2
-    in subst (...) (eqSubDerivTyComp dB composedFitsEq (fitsEqToCompFitsEq composedFitsEq)))
-```
-
-All 15 sites follow this pattern. The `subst` paths use `subTyComp`/`subTmComp` + `liftSubstCompKeep` + type-specific lift lemmas (e.g. `sigmaBranchTyLiftComp`, `qtrBranchTyLiftComp`, `qtrCohTyLiftComp`).
-
-For two-binder cases (eSigma.dm, cSigma.dm, eSigmaEq.dm, eQtr.dcoh, etc.), use `composeTwoBinders`/`composeTwoBindersEq` instead. For qtr coherence (`wkTyBy 1 A ∷ A ∷ gamma`), call `composeTwoBinders` with `B = wkTyBy 1 A`; see Blocker B resolution for the `dWkAσ` construction.
-
-**Blocker B: qtr coherence two-binder context mismatch — RESOLVED**
-
-**Problem**: `eQtr`, `eQtrEq`, `cQtr` require coherence premises in context `A ∷ A ∷ gamma`. After double-lifting sigma for gamma, the theta context is `subTy (liftSubst sigma) A ∷ subTy sigma A ∷ []`. But `compEQtrClosed` expects `subTy sigma A ∷ subTy sigma A ∷ []`. The path `subTy (liftSubst sigma) A ≡ subTy sigma A` is **FALSE** in general (counterexample: `gamma = [tyTop]`, `sigma = consSubst tmStar idSubst`, `A = tySigma tyTop (tyEq tyTop (var 0) (var 1))`).
-
-**Root cause**: The context `A ∷ A ∷ gamma` reuses the raw type `A` for BOTH binder entries without weakening the outer one. This is NOT context-well-formed in the standard sense — the outer `A` should be `wkTyBy 1 A` to be well-typed in `A ∷ gamma`.
-
-**Resolution**: Change the qtr derivation rules to use `wkTyBy 1 A` for the outer context entry. This makes the context properly well-formed and eliminates the mismatch.
-
-In [Derivability.agda](src/TReg/Derivability.agda), change:
-```agda
--- BEFORE (lines 250-272):
-eQtr : ... → Derivable (termEq (A ∷ A ∷ gamma) ...) → ...
-eQtrEq : ... → Derivable (termEq (A ∷ A ∷ gamma) ...) → Derivable (termEq (A ∷ A ∷ gamma) ...) → ...
-cQtr : ... → Derivable (termEq (A ∷ A ∷ gamma) ...) → ...
-
--- AFTER:
-eQtr : ... → Derivable (termEq (wkTyBy 1 A ∷ A ∷ gamma) ...) → ...
-eQtrEq : ... → Derivable (termEq (wkTyBy 1 A ∷ A ∷ gamma) ...) → Derivable (termEq (wkTyBy 1 A ∷ A ∷ gamma) ...) → ...
-cQtr : ... → Derivable (termEq (wkTyBy 1 A ∷ A ∷ gamma) ...) → ...
-```
-
-**Key lemma** (add to [Substitution.agda](src/TReg/Substitution.agda), ~3 lines each):
-```agda
-wkTyLiftSubst : (sigma : Subst) (A : RawType)
-  → subTy (liftSubst sigma) (wkTyBy 1 A) ≡ wkTyBy 1 (subTy sigma A)
-wkTyLiftSubst sigma A =
-  subTyRen (liftSubst sigma) suc A
-  ∙ cong (λ theta → subTy theta A) (dropLiftRenSub sigma)
-  ∙ sym (renTySub suc sigma A)
-
-wkTmLiftSubst : (sigma : Subst) (t : RawTerm)
-  → subTm (liftSubst sigma) (wkTmBy 1 t) ≡ wkTmBy 1 (subTm sigma t)
-wkTmLiftSubst sigma t =
-  subTmRen (liftSubst sigma) suc t
-  ∙ cong (λ theta → subTm theta t) (dropLiftRenSub sigma)
-  ∙ sym (renTmSub suc sigma t)
-```
-
-Proof chain: `subTyRen` gives `subTy (liftSubst sigma) (renTy suc A) ≡ subTy (liftSubst sigma ∘ suc) A`. Then `dropLiftRenSub` gives `(liftSubst sigma ∘ suc) ≡ renSub suc sigma`. Then `sym (renTySub suc sigma A)` gives `subTy (renSub suc sigma) A ≡ renTy suc (subTy sigma A)`. All three lemmas already exist in [Substitution.agda](src/TReg/Substitution.agda) (lines 152, 213, 268).
-
-**Why this works for SCC 2**: After double-lifting sigma for context `wkTyBy 1 A ∷ A ∷ gamma`:
-- `liftFits fits dAσ` gives theta = `subTy sigma A ∷ []`
-- `liftFits (liftFits ...) dWkAσ` gives theta = `subTy (liftSubst sigma) (wkTyBy 1 A) ∷ subTy sigma A ∷ []`
-- By `wkTyLiftSubst`: this equals `wkTyBy 1 (subTy sigma A) ∷ subTy sigma A ∷ []`
-- The modified `compEQtrClosed {A = subTy sigma A}` expects exactly `wkTyBy 1 (subTy sigma A) ∷ subTy sigma A ∷ []` ✓
-
-**Blast radius** (34 occurrences across 5 files, but most changes are mechanical):
-- [Derivability.agda](src/TReg/Derivability.agda): 3 constructors — change context annotation (3 lines)
-- [QtrComp.agda](src/TReg/QtrComp.agda): 5 occurrences — mechanical but nontrivial retyping. Update type signatures of `compEQtrClosed` (line 198) / `compCQtrClosed` (line 57) to use `wkTyBy 1 A ∷ A ∷ []`. Internally, `dcoh`/`dcoh'` extraction (lines 78, 263, 267), `cohFitsRight` (line 315), and all `eQtrEq`/`cQtr` derivation assembly sites (lines 389, 406, 426, 433) must be retyped against the new coherence context. The proof LOGIC is unchanged — the same derivation constructors are called with the same arguments — but the TYPE ANNOTATIONS on `where`-bound names change throughout
-- [Presupposition.agda](src/TReg/Presupposition.agda): 13 occurrences — mostly automatic: `coh`/`coh'` from pattern matching get new type, flow into reconstructed `eQtr`/`cQtr` calls unchanged
-- [CompTheorem.agda](src/TReg/CompTheorem.agda): 4 occurrences — `computableTheorem` gamma=[] cases + SCC 2 qtr cases
-- [Inversion.agda](src/TReg/Inversion.agda): only `tyQtr` type inequalities — **UNAFFECTED**
-- [Evaluation.agda](src/TReg/Evaluation.agda): **UNAFFECTED** (no eQtr/cQtr/eQtrEq usage)
-
-**Blocker C: `fitsToCompFits` → `openCompTy` transport cycle — RESOLVED**
-
-**Cycle** (recorded at [CompTheorem.agda:638](src/TReg/CompTheorem.agda#L638)):
-`fitsToCompFits` → SCC 2 → `compTransportFamilyTy` → `openCompTy` → closures call `fitsToCompFits`
-
-**Root cause**: [compTransportFamilyTy](src/TReg/CompTheorem.agda#L3863) calls `openCompTy` on a freshly constructed `transportFamilyTy` derivation. `openCompTy`'s closures call `fitsToCompFits`, completing the cycle.
-
-**Resolution**: Rewrite `compTransportFamilyTy` / `compTransportFamilyTyEq` to pattern-match on the input open Computable (`compTyOpen` / `compTyEqOpen`) and compose its stored closures with `headTypeTransportFits`, instead of calling `openCompTy`.
-
-```agda
-compTransportFamilyTy compAC (compTyOpen neq dD closureS closureEqS) =
-  compTyOpen nonemptyNeNil
-    (transportFamilyTy dAC dC dD)
-    (λ sigma fits →
-      subst ... (closureS _ (composeFits fits (headTypeTransportFits dAC dC))))
-    (λ sigma tau fitsEq →
-      subst ... (closureEqS _ _ (composeEqFits fitsEq (headTypeTransportFits dAC dC))))
-  where
-  dAC = compToDerivable compAC
-  dC  = compToDerivable (compTyEqRight compAC)
-```
-
-**Why it terminates**: `closureS` / `closureEqS` are constructor arguments of the INPUT Computable — not recursive calls. `composeFits` / `composeEqFits` are in [Structural.agda:868](src/TReg/Structural.agda#L868) (pre-mutual). `headTypeTransportFits` is in [Presupposition.agda:311](src/TReg/Presupposition.agda#L311) (pre-mutual). No `fitsToCompFits`, no SCC 2, no `openCompTy` called.
-
-**Transport paths**: Use the same normalization already in [transportFamilyTy](src/TReg/Presupposition.agda#L341): `subTyComp ... idSubst ...` composed with `subTyId`. No new `compSub sigma idSubst ≡ sigma` lemma needed.
-
-**`compTransportFamilyTyEq` nuance**: The third field of `compTyEqOpen` (the left-side type witness) must be rebuilt as `compTransportFamilyTy compAC compD` where `compD` is the left-side witness stored in the input. This is NOT a cycle — `compTransportFamilyTy` calls into the already-fixed version on a constructor argument, not a recursive call through the mutual block.
-
-**Downstream**: The Acc workers (`compSymTyClosedAcc`, `compTransTyClosedAcc`) call `compTransportFamilyTy` / `compTransportFamilyTyEq` but are fixed automatically since the wrappers no longer call `openCompTy`.
-
-**Missing constructor cases (catch-all fallbacks) — all qtr-driven:**
-
-| Function | Missing constructors | Fallback line |
-|----------|---------------------|---------------|
-| `substDerivTmComp` | `eQtr` | 1420 |
-| `substDerivTmEqComp` | `eQtrEq`, `cQtr` | 1671 |
-| `eqSubDerivTmComp` | `eQtr` | 2036 |
-| `eqSubDerivTmEqComp` | `eQtrEq`, `cQtr` | 2383 |
-
-Note: `iSigmaEq`, `cSigma`, `eSigmaEq` now have explicit cases (done by user). Only the qtr family remains.
-
-**3b. Rewire `openCompTy`/`openCompTyEq`/`openCompTm`/`openCompTmEq`** — DONE ✓
-
-**3c. Rewire closed substitution helpers as thin SCC 2 wrappers** — PARTIALLY DONE:
-- `substTyClosed` — DONE ✓ (thin wrapper)
-- `substTyEqClosed` — DONE ✓ (thin wrapper)
-- `substTmClosed` — DONE ✓ (thin wrapper)
-- `substTmEqClosed` — DONE ✓ (thin wrapper)
-
-**3d. Rewire `eqSubTyClosed` etc.** — DONE ✓
-**3e–3i.** — All DONE ✓
-
-**Phase 3.0–3.2: All DONE ✓** (qtr rule change, qtr SCC 2 cases, term-side thin wrappers all landed and typecheck)
-
-**Phase 3.3: Break the transport cycle (Blocker C) — DONE ✓**
-- Rewrote `compTransportFamilyTy` / `compTransportFamilyTyEq` to compose stored closures instead of calling `openCompTy` / `openCompTyEq`.
-- Added `compSymTransportFamilyTyEq` at [CompTheorem.agda:3995](src/TReg/CompTheorem.agda#L3995).
-- Removed `with computableTheorem` — confirmed gone.
-- Typechecks with TERMINATING.
-
-**Blocker D: Acc/closure cycle in `compSymTyClosedAcc` / `compTransTyClosedAcc`**
-
-**Cycle**: Agda looks inside lambdas passed to data constructors. The closures stored in `compTyEqOpen` (built by `compSymTyOpenHelper` at lines 3942-3966 and `compTransTyOpenHelper` at lines 3982-3993) call `compSymTyClosed` / `compTransTyClosed`, which call `compSymTyClosedAcc <-wellfounded` / `compTransTyClosedAcc <-wellfounded`. The `<-wellfounded` witness is NOT a sub-term of the original `(acc rs)`.
-
-Call chain:
-```
-compSymTyClosedAcc (compTyEqClosedSigma ...) (acc rs)    [line 4290]
-  → compSymTransportFamilyTyEq compCE compDF              [line 4304]
-    → compSymTyOpenHelper ...                              [line 4000]
-      → compTyEqOpen ... (λ sigma fits → compSymTyClosed (sub sigma fits)) ...   [line 3957]
-        → compSymTyClosedAcc ... <-wellfounded             [via compSymTyClosed wrapper]
-```
-
-Same pattern for `compTransTyClosedAcc` → `compTransTyOpenHelper` → closures → `compTransTyClosed`.
-
-**Resolution**: Parameterize the open helpers by their closure operations. The helpers currently hardcode calls to `compSymTyClosed`/`compTransTyClosed`. Instead, they should receive these operations as function arguments:
-
-```agda
-compSymTyOpenHelper :
-  (symCl : ∀ {A B} → Computable (typeEq [] A B) → Computable (typeEq [] B A)) →
-  (transCl : ∀ {A B C} → Computable (typeEq [] A B) → Computable (typeEq [] B C) → Computable (typeEq [] A C)) →
-  ... → Computable (typeEq gamma B A)
-```
-
-**Callers**:
-- `compSymTy` (general dispatcher, open case at line 4039): pass `compSymTyClosed` / `compTransTyClosed` — standard wrappers with `<-wellfounded`. Fine because `compSymTy` is not itself Acc-guarded.
-- `compSymTyClosedAcc` (sigma case at line 4304): pass Acc-threaded versions `(λ comp → compSymTyClosedAcc comp acHead)` / `(λ comp₁ comp₂ → compTransTyClosedAcc comp₁ comp₂ acHead)`, where `acHead = rs _ proof` is the Acc sub-witness for the sigma head component. The sub-witness is valid because the closures operate on the HEAD type equality, whose measure < the sigma type's measure.
-
-**Why the Acc sub-witness works**: `acHead : Acc _<_ (closedTaskMeasure C)` where `C` is the sigma head. The closures receive `sub sigma fits : Computable (typeEq [] A' B')` whose `closedTaskMeasure` equals `closedTaskMeasure C` (because substitution preserves evaluation of closed head types). So `acHead` is a valid Acc witness for the closure's argument. Specifically, the proof that `closedTaskMeasure C < closedTaskMeasure (tySigma C D)` already exists as `tyDepth-fst<Sigma C D`.
-
-**Same treatment** for `compTransTyOpenHelper`, `compSymTransportFamilyTyEq`, and any other helpers that store `compSymTyClosed`/`compTransTyClosed` in closures.
-
-**Affected functions** (all in [CompTheorem.agda](src/TReg/CompTheorem.agda)):
-- `compSymTyOpenHelper` (line 3932): add `symCl`/`transCl` params, replace hardcoded calls
-- `compTransTyOpenHelper` (line 3968): add `transCl` param
-- `compSymTransportFamilyTyEq` (line 3995): add `symCl`/`transCl` params, pass to `compSymTyOpenHelper`
-- `compSymTyClosedAcc` sigma case (line 4290): pass Acc-threaded versions
-- `compTransTyClosedAcc` sigma case (line 4377): pass Acc-threaded versions
-- `compSymTy` open case (line 4039): pass `compSymTyClosed`/`compTransTyClosed`
-- `compTransTy` open case: same
-
-**Implementation order for remaining work:**
-
-The `fitsToCompFits` rewrite only works after two prerequisite decouplings. Applying it early exposes a 6-function SCC through `openCompTy` (line 4008) and `computeWeakenTy` (line 4890).
-
-**Phase 3.5: Decouple SCC 2 from `openComp*`**
-
-~60 `openComp*` calls inside `substDeriv*Comp` / `eqSubDeriv*Comp` (lines 1951-3829) create edges SCC 2 → `openCompTy` → `fitsToCompFits`. Replace each with direct `comp*Open` construction on the original sub-derivation, using the frozen-rule pattern:
-
-- Binder-local closures call SCC 2 on the ORIGINAL sub-derivation with composed fits.
-- One-binder closures use `composeOneBinder` / `composeOneBinderEq`.
-- Two-binder closures use `composeTwoBinders` / `composeTwoBindersEq`.
-- Closure `CompFitsSubst` payloads use the fixed-arity `singleClosedCompFits`, `singleClosedCompFitsEq`, `doubleClosedCompFits`, `doubleClosedCompFitsEq` — NOT the generic `fitsToCompFits`.
-- Do NOT call `packClosedSubst`, `packClosedEqSubst`, or the generic `openComp*` from binder closures.
-
-After this phase, SCC 2 has no call edge to `openCompTy` / `fitsToCompFits`.
-
-**Gate 1**: temp stripped build after removing the remaining `openComp*` SCC 2 calls.
-
-**Phase 3.6: Decouple weakening from `computableTheorem`**
-
-`computeWeakenTy {gamma = []} {delta = []}` at [line 4890](src/TReg/CompTheorem.agda#L4890) calls `computableTheorem d`, creating a back-edge from the weakening layer to SCC 1. Replace with Computable-based weakening helpers:
-
-- Base case `delta = []`: just transport along `wkTyBy0` / `wkTmBy0`.
-- Non-empty cases: reuse the existing `weakenOneOpen*` helpers and iterate binder-by-binder.
-
-Same treatment for `computeWeakenTyEq`, `computeWeakenTm`, `computeWeakenTmEq`.
-
-After this phase, `computeWeaken*` no longer calls `computableTheorem`.
-
-**Gate 2**: temp stripped build after removing the derivation-based `computeWeaken*` → `computableTheorem` edge.
-
-**Phase 3.7: Rewrite `fitsToCompFits` / `fitsEqToCompFitsEq`**
-
-Now safe to apply:
-```agda
-fitsToCompFits (fitsCons {sigma = sigmaTail} {A = A} {t = t} fits dt) =
-  compFitsCons (fitsToCompFits fits)
-    (subst (λ J → Computable J)
-      (cong₂ (hasTy []) (subTmId t) (subTyId (subTy sigmaTail A)))
-      (substDerivTmComp dt (fitsNil wfNil) compFitsNil))
-```
-Same pattern for `fitsEqToCompFitsEq` using `substDerivTmEqComp`.
-
-**Gate 3**: real build of `src/TReg/CompTheorem.agda` without `{-# TERMINATING #-}`.
-
-**Phase 4: Remove TERMINATING, add --safe**
-- Remove `{-# TERMINATING #-}` at [line 669](src/TReg/CompTheorem.agda#L669).
-- Add `{-# OPTIONS --safe #-}` at top.
-- **Gate 4**: `agda src/TReg/CompTheorem.agda` typechecks --safe.
-
-**Phase 5: Everything.agda + verification**
-- Add `open import TReg.CompTheorem public` + `{-# OPTIONS --safe #-}` to [Everything.agda](src/TReg/Everything.agda).
-- `agda src/TReg/Everything.agda` → success.
-- `rg -n 'TERMINATING' src/TReg/*.agda` → no matches.
-
-**Gate**: CompTheorem.agda typechecks with TERMINATING ✓
+## Effort estimate
+
+| Stage | Time | LoC delta | Status |
+|---|---|---|---|
+| 0 — Audit | 0.5 day | 0 | ✅ done |
+| 1 — `compFSigmaClosed` | 0.5 day | −10 | ✅ done (landed this session) |
+| 2 — `compCSigmaClosed`, `compCQtrClosed` (**v28 approach**) | 1.5–2 days | +100 (2-binder lift plumbing) / −30 (combinator shrink) | 🔄 to-do (after v27 revert) |
+| 3 — `compESigmaClosed`, `compEQtrClosed` | 2 days | +30 bridging / net flat | ⏸ blocked on Stage 2 |
+| 4 — Binder helpers + Raw variants | 1.5 days | −400 to −600 (dead code removal) | ⏸ blocked on Stage 3 |
+| 5 — Layer move | 0.5 day | 0 (physical move) | ⏸ blocked on Stage 4 |
+| 6 — Verify + restore `--safe` | 0.25 day | −2 | ⏸ blocked on Stage 5 |
+| **Total** | **7–9 days** (revised from v27's 6–8) | **−300 to −400 net** | |
+
+**Next actionable step**: before starting v28 Stage 2, check whether a 2-binder `ComputableFits` lift helper already exists (look for `lift2CompFits` / `liftCompFitsEq2` / similar in [CompTheorem.agda:1-586](src/TReg/CompTheorem.agda#L1-L586) or [Computability.agda](src/TReg/Computability.agda)). If not, that helper must be added first (~50 LoC, pre-mutual) to avoid Stage 2 ballooning.
 
 ---
 
-## Success criteria
+## Files modified
 
-1. `rg -n '^\{-# TERMINATING #-\}$' src/TReg/*.agda` returns no matches
-2. `agda src/TReg/Everything.agda` succeeds with `--safe` on every module
-3. `MainTheorem.agda` unchanged — `canonicalType`, `canonicalTerm`, etc. still work
+- [src/TReg/CompTheorem.agda](src/TReg/CompTheorem.agda) — main refactor (all stages)
+- [src/TReg/Measure.agda](src/TReg/Measure.agda) — add missing decrease lemmas in Stages 0, 2, 3
+- [src/TReg/Structural.agda](src/TReg/Structural.agda) — add `...Raw` variants in Stage 4b
+- [src/TReg/SigmaComp.agda](src/TReg/SigmaComp.agda), [src/TReg/QtrComp.agda](src/TReg/QtrComp.agda), [src/TReg/EqComp.agda](src/TReg/EqComp.agda), [src/TReg/TopComp.agda](src/TReg/TopComp.agda) — restore `--safe` pragma in Stage 6
+
+---
+
+## Verification
+
+At each stage:
+```bash
+agda src/TReg/CompTheorem.agda        # stage-local check
+agda src/TReg/Everything.agda          # full project check (end of each stage)
+```
+
+Final verification (end of Stage 6):
+```bash
+agda src/TReg/Everything.agda          # clean build
+rg -n '^\{-# TERMINATING #-\}' src/TReg/   # zero hits (or narrow block only, if Plan B)
+rg -n '--no-positivity-check|--sized-types|^postulate' src/TReg/   # zero new hits
+```
+
+Confirm [Structural.agda:295-313](src/TReg/Structural.agda#L295-L313)'s `compSingleSubstTyEqClosed` / `compSingleEqSubstTyClosed` still typecheck (external HypComputable consumers continue to work because `mkHypComputable*` is still exported from CompTheorem.agda, just at a physically lower position).
+
+---
+
+## Why Option (c) and not Option (b2)
+
+1. **No new data types.** Option (c) rearranges existing code; Option (b2) introduces `HypTy`/`HypTm`/`HypTyEq`/`HypTmEq` plus translation functions plus semantic-equivalence proofs.
+2. **Builds on proven technique.** Option (c) extends the Phase C Acc-threading pattern that already works for the direct-recursive cases. Option (b2) introduces a new termination justification via structural recursion on a new type.
+3. **3–4× smaller scope.** (c): 6–8 days, ~1500 LoC touched. (b2): 2–3 weeks, ~2500 LoC new + ~2000 LoC rewrites.
+4. **Unresolved obstacle in (b2).** Non-canonical derivation rules (`conv`, `reflTy`, `symTy`, `transTy`, `weakenTyEq`, `substTyEqRule`, `eqSubTyRule`, etc.) have no natural type-indexed inductive counterpart. (b2) either admits a raw-`Derivable` constructor in `HypTy` (re-introducing the closure-escape problem) or needs a separate canonicalization layer with its own termination proof.
+5. **Level-split preserved.** (c) leaves `HypComputable` at level `(suc n)` and does not disturb the existing level invariants. (b2) would need to re-establish level discipline from scratch.
+6. **Incremental deliverables.** Stages 1+2 alone are demonstrable wins (remove ~30 LoC of indirection, improve the Phase C story). If Stage 3 stalls, the project is still strictly better off than the status quo.
+7. **Narrow-TERMINATING fallback.** Even if Stage 5 fails, Plan B reduces the TERMINATING audit surface by 7×. (b2) has no such fallback — if the inductive translation doesn't typecheck, the whole option is dead.
