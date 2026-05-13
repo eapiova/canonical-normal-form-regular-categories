@@ -1,24 +1,58 @@
-# Plan: Eliminate `TERMINATING` from `CompTheorem.agda` — v28 (Stage 2 revision)
+# Full `TERMINATING` Removal From `TReg`
 
-## Current status note — May 13, 2026
+## Current status — May 13, 2026
 
-The checked-in branch is ahead of parts of this historical plan. `compESigmaClosed`
-and `compEQtrClosed` are already extracted to `TReg.OpenHyp`, and the OpenHyp
-callback telescope has now been bundled into an `SCC2Callbacks` record. The
-closed `compESigmaClosed` / `compEQtrClosed` helpers no longer call the SCC2
-callbacks internally; their branch/coherence `Computable` values are computed
-at the call sites and passed into the helpers. The cheap gates pass:
+This top section is the current source of truth. The v28 Stage 2-6 material
+below is historical context unless a newer note explicitly points back to it.
+The selected policy for this implementation pass is **full removal only**:
+do not reintroduce a broad or narrow `{-# TERMINATING #-}` fallback.
+
+Landed checkpoints:
+
+- `edbe97d` — May 13 F.6 checkpoint: `SCC2Callbacks` in `TReg.OpenHyp`,
+  callback-free `compESigmaClosed` / `compEQtrClosed`, and `--safe` restored
+  on `FitsHelpers.agda` / `OpenHyp.agda`.
+- `39f677c` — direct derivability/raw-helper cleanup for several remaining
+  core-to-helper sites; this keeps `SCC2Callbacks`, `SigmaClosedBranchEq`,
+  `QtrClosedBranchEq`, and `QtrClosedCohEq`, and does not re-extract
+  `composeCompFits`.
+
+Current working tree state after the final cleanup:
+
+- `src/TReg/CompTheorem.agda` has `{-# OPTIONS --safe --cubical #-}` and no
+  `{-# TERMINATING #-}` pragma.
+- `src/TReg/SigmaComp.agda`, `src/TReg/QtrComp.agda`, and
+  `src/TReg/Everything.agda` have been moved back to `--safe` options.
+- `FitsHelpers.agda` and `OpenHyp.agda` remain `--safe`.
+- No new `postulate`, `--no-positivity-check`, or `--type-in-type` usage was
+  added under `src/TReg`.
+
+Cheap local gates:
 
 ```sh
 agda src/TReg/FitsHelpers.agda
 agda src/TReg/OpenHyp.agda
 agda --only-scope-checking src/TReg/CompTheorem.agda
+git diff --check
 ```
 
-Local warm full checks of `CompTheorem.agda` with `+RTS -M24G -s` still did not
-complete within the 300s cap before/after the callback-record refactor, or after
-the closed-helper callback removal. The broad pragma therefore remains pending
-the post-core split / narrow-fallback decision and a larger verification run.
+Bounded full-check evidence:
+
+- `timeout 300 agda +RTS -M24G -s -RTS src/TReg/CompTheorem.agda` on the
+  no-pragma state started checking `TReg.CompTheorem` and timed out after the
+  300s cap with exit code 124. No SCT error was reported before the cap; no
+  RTS stats were emitted because `timeout` killed the process.
+- `agda --only-scope-checking src/TReg/Everything.agda` also entered
+  dependency checking for `TReg.CompTheorem`; it was stopped after roughly
+  300s with the Agda process at about 22 GB RSS. No Agda error was reported
+  before it was stopped.
+
+Local evidence for this pass: no `TERMINATING` pragmas, the cheap helper and
+`CompTheorem` scope gates pass, and bounded no-pragma checks have been
+attempted/documented. Final merge confidence still requires a full no-pragma
+`CompTheorem` / `Everything` check on a 64 GB class machine.
+
+## Historical v28 plan below
 
 ## Summary — what needs to change vs v27
 
