@@ -1,5 +1,25 @@
 # Plan: Eliminate `TERMINATING` from `CompTheorem.agda` — v28 (Stage 2 revision)
 
+## Current status note — May 13, 2026
+
+The checked-in branch is ahead of parts of this historical plan. `compESigmaClosed`
+and `compEQtrClosed` are already extracted to `TReg.OpenHyp`, and the OpenHyp
+callback telescope has now been bundled into an `SCC2Callbacks` record. The
+closed `compESigmaClosed` / `compEQtrClosed` helpers no longer call the SCC2
+callbacks internally; their branch/coherence `Computable` values are computed
+at the call sites and passed into the helpers. The cheap gates pass:
+
+```sh
+agda src/TReg/FitsHelpers.agda
+agda src/TReg/OpenHyp.agda
+agda --only-scope-checking src/TReg/CompTheorem.agda
+```
+
+Local warm full checks of `CompTheorem.agda` with `+RTS -M24G -s` still did not
+complete within the 300s cap before/after the callback-record refactor, or after
+the closed-helper callback removal. The broad pragma therefore remains pending
+the post-core split / narrow-fallback decision and a larger verification run.
+
 ## Summary — what needs to change vs v27
 
 v27 recommended Option (c): rewrite combinators (`compFSigmaClosed`, `compCSigmaClosed`, …) to take `Derivable` + `Acc _<_ (substTaskMeasure dm)` instead of `HypComputable`. Stage 1 landed clean. **Stage 2 reverted** because wrapping `dm` via `substTmRule dm outerFits` increases `derivSize`, so the sub-Acc lemma `substMeasure-cSigma-m<` no longer bounds the resulting derivation.
