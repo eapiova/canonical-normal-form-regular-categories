@@ -2,8 +2,9 @@
 
 ## Current status — May 13, 2026
 
-This top section is the current source of truth. The v28 Stage 2-6 material
-below is historical context unless a newer note explicitly points back to it.
+This top section is aligned with the reconciled global Claude plan at
+`/home/eapiova/.claude/plans/sharded-prancing-forest.md`. The v28 Stage 2-6
+material below is historical context unless a newer note explicitly points back to it.
 The selected policy for this implementation pass is **full removal only**:
 do not reintroduce a broad or narrow `{-# TERMINATING #-}` fallback.
 
@@ -21,6 +22,20 @@ Current working tree state after the final cleanup:
 
 - `src/TReg/CompTheorem.agda` has `{-# OPTIONS --safe --cubical #-}` and no
   `{-# TERMINATING #-}` pragma.
+- Current Phase G.0/G.1 result: the non-`0` term-equality inversion-wrapper
+  `abstract` experiment was scored against `2b02c66` and reverted as
+  inconclusive because the paired 300s probes produced no usable profile or
+  trajectory evidence.
+- Current G.0 attempt 2 mechanics: use Agda's own `--profile=definitions`
+  with `-v profile:2`, write primary output to
+  `/tmp/cnfrc-g0/attempt2/comp-defs-M24G.log`, and treat `agda-profile.txt`
+  as optional because this local Agda prints profile tables to the command log.
+- Current G.0 attempt 2 result: CompTheorem-level profiling is locally
+  blocked. `-M24G` heap-exhausted after 22m15s elapsed with 24,717,317,216 B
+  maximum residency and no Agda profile table; `-M40G` timed out after 30m01s,
+  was heavily swap-bound, and also emitted no profile table. Completing proxy
+  profiles for `Inversion`, `OpenHyp`, and `FitsHelpers` are saved under
+  `/tmp/cnfrc-g0/attempt2/` and are partial evidence only.
 - `src/TReg/SigmaComp.agda`, `src/TReg/QtrComp.agda`, and
   `src/TReg/Everything.agda` have been moved back to `--safe` options.
 - `FitsHelpers.agda` and `OpenHyp.agda` remain `--safe`.
@@ -198,7 +213,7 @@ Add missing decrease lemmas `substMeasure-cSigma-m<` and `substMeasure-cQtr-l<` 
 
 ### Stage 6 — Restore `--safe` and verify end-to-end *(0.25 day)*
 - Delete `{-# TERMINATING #-}` at [CompTheorem.agda:186](src/TReg/CompTheorem.agda#L186).
-- Change [CompTheorem.agda:1](src/TReg/CompTheorem.agda#L1) from `{-# OPTIONS #-}` back to `{-# OPTIONS --safe --cubical #-}`. Remove the stale "Cannot use --safe" comment at the top of [SigmaComp.agda:1](src/TReg/SigmaComp.agda#L1), [QtrComp.agda](src/TReg/QtrComp.agda), [EqComp.agda](src/TReg/EqComp.agda), [TopComp.agda](src/TReg/TopComp.agda) if present and restore `--safe`.
+- Historical action, now completed by `2b02c66`: `CompTheorem.agda` and the satellite modules carry safe options, and stale safe-option blocker comments have been removed.
 - Run `agda src/TReg/Everything.agda`. Expected: clean build, no TERMINATING in TReg.
 - Verify with `rg -n '^\{-# TERMINATING #-\}' src/TReg/` — zero hits.
 
