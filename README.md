@@ -1,3 +1,6 @@
+> **A complete Agda formalisation of this theorem is at
+> [github.com/eapiova/regcat-normal-form](https://github.com/eapiova/regcat-normal-form)**.
+
 A partially formalised proof of the canonical-form theorem for the dependent type theory of the regular categories. The formalisation is built on top of the [General Type Theories framework](https://github.com/peterlefanulumsdaine/general-type-theories).
 
 # Installation
