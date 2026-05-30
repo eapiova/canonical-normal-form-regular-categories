@@ -19,15 +19,9 @@ presentazione
 _build/
 *.agdai
 
-# Keep local reference copies out of the public repository.
-Borsetto-SSTT.pdf
-Tesi - Laurea magistrale in Informatica - A canonical normal form theorem for the type theory of regular categories.pdf
-TypeTheory.pdf
-tumscs.pdf
-references/*.pdf
-
-# Local notes, slides, papers, and development artifacts live outside the
-# public Coq/thesis repository.
+# Keep local notes, PDFs, references, slides, papers, and development
+# artifacts out of this public Coq/thesis repository.
+*.pdf
 .claude/
 references/
 TERMINATING-PLAN.md
