@@ -25,3 +25,13 @@ Tesi - Laurea magistrale in Informatica - A canonical normal form theorem for th
 TypeTheory.pdf
 tumscs.pdf
 references/*.pdf
+
+# Local notes, slides, papers, and development artifacts live outside the
+# public Coq/thesis repository.
+.claude/
+references/
+TERMINATING-PLAN.md
+Screenshot_*.png
+easychair.cls
+sstt-*
+sstt-template/
