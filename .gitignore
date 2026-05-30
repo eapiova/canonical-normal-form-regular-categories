@@ -18,3 +18,10 @@ TESI_FINALE.pdf
 presentazione
 _build/
 *.agdai
+
+# Keep local reference copies out of the public repository.
+Borsetto-SSTT.pdf
+Tesi - Laurea magistrale in Informatica - A canonical normal form theorem for the type theory of regular categories.pdf
+TypeTheory.pdf
+tumscs.pdf
+references/*.pdf
