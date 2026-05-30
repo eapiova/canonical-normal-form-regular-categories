@@ -11,21 +11,8 @@ Makefile.coq.conf
 html
 .Makefile.coq.d
 raw.v
-.CoqMakefile
-CoqMakefile
-CoqMakefile.conf
-TESI_FINALE.pdf
-presentazione
-_build/
-*.agdai
 
-# Keep local notes, PDFs, references, slides, papers, and development
-# artifacts out of this public Coq/thesis repository.
+# Keep local documents and notes out of this public Coq/thesis repository.
 *.pdf
 .claude/
-references/
-TERMINATING-PLAN.md
-Screenshot_*.png
-easychair.cls
-sstt-*
-sstt-template/
+local/
